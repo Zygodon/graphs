@@ -1,0 +1,117 @@
+---
+title: "igraph notebook 2"
+output: html_notebook
+---
+From igraph_notebook2.Rmd; need to follow up on the odds ratio idea, but possibly this may be facilitated by taking an accretionary approach to the graphs; I'm thinking of looking at the graph for a single quadrat, then adding the graphs for more quadrats, simplifying as we go. Start with the most species rich quadrats. But note we have 1223 quadrats!
+Load up some data ...
+```{r}
+# Libraries
+library("RMySQL")
+library(tidyverse)
+# library(corrplot)
+library(networkD3)
+library(igraph)
+
+# Functions
+dbDisconnectAll <- function(){
+  ile <- length(dbListConnections(MySQL())  )
+  lapply( dbListConnections(MySQL()), function(x) dbDisconnect(x) )
+  cat(sprintf("%s connection(s) closed.\n", ile))
+}
+
+# General SQL query
+query <- function(q)
+{
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+# Load the database
+GetTheData <-  function()
+{
+  # GET DATA FROM DB
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  
+  
+  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, visit_date, records_id, species.species_id, 
+    species.species_name from assemblies
+      join quadrats on quadrats.assembly_id = assemblies_id
+      join visit_dates on quadrats.vd_id = visit_dates.vds_id
+      join records on records.quadrat_id = quadrats_id
+      join species on species.species_id = records.species_id
+      # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
+      # exclude some odd assemblies with no assigned community
+    where quadrat_count > 0 and species.species_id != 4 and community is not null;') 
+      # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
+      # the team have not decided
+      # on a sub-group.
+  
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
+  # Not used yet. Need to check warnings.
+{
+  t <- d %>% filter(species_name %in% c(A, B))
+  As <- t %>% filter(species_name == A)
+  Bs <- t %>% filter(species_name == B)
+  j1 <- full_join(As, Bs, by = "quadrat_id")
+  # get all the quadrats, including ones with neither A nor B
+  q <- d %>% distinct(quadrat_id) 
+  j2 <- (left_join(q, j1, by = "quadrat_id") 
+         # NOTE: column length q >= column length j1
+         %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
+  s <- colSums(j2[,4:7])
+  return((s[1]*s[4])/(s[2]*s[3]))
+}
+
+# End of functions
+
+d <- GetTheData()
+# the_data <- d %>% filter(community == "MG5c")
+the_data <- (d %>% filter(grepl("MG", community))
+             %>% select(quadrat_id, species_name))
+rm(d)
+```
+Rank quadrats in order of species count:
+```{r}
+sp_counts <- (the_data %>% group_by(quadrat_id) 
+              %>% summarise(sp_cnt = n()) 
+              %>% arrange(desc((sp_cnt))))
+```
+and then plot a graph of the quadrat with highest species count:
+```{r}
+d <- the_data %>% filter(quadrat_id  == sp_counts$quadrat_id[1])
+
+edges <- (full_join(d, d, by = "quadrat_id")
+          %>% rename(from = species_name.x)
+          %>% rename(to = species_name.y)
+          %>%  select(-quadrat_id)
+          %>% group_by(from, to) %>% summarise(wt = n())
+          %>% filter(from != to))
+nodes <- distinct(edges, from)
+net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
+n2 <- simplify(net, edge.attr.comb = "ignore")
+l <- layout.fruchterman.reingold(net)
+plot(n2, layout=l, vertex.label=NA)
+```
+All this tells us is that all the species in that quadrat are found in that quadrat. Not very useful! Adding the next quadrat and simplifying won't really help - might just as well use n2 from igraph_notebook2.Rmd, which builds them in one go.
