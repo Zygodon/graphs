@@ -66,6 +66,27 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
+OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
+  # Not used yet. Need to check warnings.
+{
+  t <- d %>% filter(species_name %in% c(A, B))
+  As <- t %>% filter(species_name == A)
+  Bs <- t %>% filter(species_name == B)
+  j1 <- full_join(As, Bs, by = "quadrat_id")
+  # get all the quadrats, including ones with neither A nor B
+  q <- d %>% distinct(quadrat_id) 
+  j2 <- (left_join(q, j1, by = "quadrat_id") 
+         # NOTE: column length q >= column length j1
+         %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
+  s <- colSums(j2[,4:7])
+  return((s[1]*s[4])/(s[2]*s[3]))
+}
+
+# End of functions
+
 d <- GetTheData()
 # the_data <- d %>% filter(community == "MG5c")
 the_data <- (d %>% filter(grepl("MG", community))
@@ -99,3 +120,6 @@ which with some fiddling with the plot parameters resolves into a complex set of
 plot(wc, n2, vertex.label=NA, vertex.size = 2, rescale = T, edge.color = NA)
 ```
 So, this is rather interesting. We would like to know more about that little group of four plants at about 10 o'clock, and th much larger orange clump between 6:00 and 8:00, a little more central. We note that bigger modules occur centrally with many isolated plants peripherally, presumably the central species are more densely connected. More urgently, however, it seems sensible to narrow down the search for interacting plants in some way; also to see whether the modules are a short range phenomenon. Would a similar structure persist if we looked at co-occurrence at the assembly level? Probably it would, but maybe there are some modules that depend on short-range interactions that may be less obvious with aggregation at the assembly level (at least 5 quadrats, widely spaced). Could look at within-quadrat assocation vs between-quadrat association?
+
+Need a function for odds ratio given a pair of species. (Written and inserted at head of notebook but not used yet).
+
