@@ -11,6 +11,7 @@ library("RMySQL")
 library(tidyverse)
 library(networkD3)
 library(igraph)
+library(plotly)
 
 # Functions
 dbDisconnectAll <- function(){
@@ -65,17 +66,18 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
-OddsRatio <-  function(d, A, B) # quadrat_data, species_name, species_name
+OddsRatio <-  function(d, A, B) # assembly/quadrat data, species_name, species_name
 {
+  d <- rename(d, id = 1) # Column 1 could be quadrat_id or assembly_id
   A <- A[1]
   B <- B[1]
   t <- d %>% filter(species_name %in% c(A, B))
   As <- t %>% filter(species_name == A)
   Bs <- t %>% filter(species_name == B)
-  j1 <- full_join(As, Bs, by = "quadrat_id")
-  # get all the quadrats, including ones with neither A nor B
-  q <- d %>% distinct(quadrat_id) 
-  j2 <- (left_join(q, j1, by = "quadrat_id") 
+  j1 <- full_join(As, Bs, by = "id")
+  # Get all the assemblies/quadrats, including ones with neither A nor B
+  q <- d %>% distinct(id) 
+  j2 <- (left_join(q, j1, by = "id") 
          # NOTE: column length q >= column length j1
          %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
          %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
@@ -122,25 +124,26 @@ edges2 <- as_data_frame(n2, what="edges")
 The next step is to find a way to quantify the strength of the associations between pairs of plants, and to simplify the graph by eliminating weak associations. The weight parameter is perhaps not the most appropriate; I use odds ratio, the ratio of the odds of A in the presence of B and the odds of A in the absence of B (Wikipedia)
 ```{r}
 # It's much quicker to read the file than to compute from scratch
-if (file.exists("Pairwise_Odds_Ratio.csv"))
+if (file.exists("Quadrat_PWOR.csv"))
 {
-  pairwise_o_r <- read.csv("Pairwise_Odds_Ratio.csv") 
+  quadrat_pwor <- read.csv("Quadrat_PWOR.csv") 
 } else
 {
   n <- length(row.names(edges2))
-  pairwise_o_r <- tibble(
+  quadrat_pwor <- tibble(
     odds_ratio = 1:n,
     ci_low = 1:n,
     ci_high = 1:n)
   for (i in seq_along(row.names(edges2)))
   {
-    pairwise_o_r[i,1:3] <- OddsRatio(quadrat_data, edges2$from[i], edges2$to[i])
+    quadrat_pwor[i,1:3] <- OddsRatio(quadrat_data, edges2$from[i], edges2$to[i])
   }
+  write.csv(quadrat_pwor, "Quadrat_PWOR.csv")
 }
 ```
 The OddsRatio function calculates approximate confidence intervals as well as the ratio itslef, so now we can simplify things by removing edges where the low (5%) confidence limit is greater than 1 (odds ratio of 1 signifies absolute independence; greater than one is some degree of association. Less than one signifies relative exclusion).
 ```{r}
-edges3 <-( bind_cols(edges2, pairwise_o_r)
+edges3 <-( bind_cols(edges2, quadrat_pwor)
            %>% filter(!is.infinite(odds_ratio))
            %>% filter(!is.infinite(ci_low))
            %>% filter(!is.infinite(ci_high))
@@ -168,6 +171,75 @@ plot(wc, net3, layout = l2, vertex.label=NA)
 ```
 Cluster_walktrap finds 5 communities; 1 - 3 are large, 5 is a singleton (Linum_catharticum) and 4 consistes of Fissidens_taxifolius, Oenanthe_pimpinelloides, Plagiomnium_undulatum. Only a single assembly contained corky fruited water dropwort, community 4 is likely driven by that fact.
 
-However. Leaving aside the beauty of modularity (which I'm sure I will return to), the purpose here was to investigate whether the pairwise odds_ratios (PWOR) could be used to get evidence for specific short range dependencies. So I will compare pairwise odds_ratios from shared quadrats with pairwise odds_ratios from whole assemblies. On the whole, we expect the assembly level PWOR to be greater than the quadrat level on account of the latger area sampled; there is more chance of two species sharing an assembly. This would not necessarily be the case, however, if (a) both members of a pair were very common - and particularly if they had large values for percentage cover - or (b) there was a specific close-range association between them (not excluded by case "a", of course). So pairs of relatively scarce plants for which PWOR is similar by quadrat and by assembly will be of interest.
+Calculate assembly level PWOR. Extract assembly_id and species names
+```{r}
+assembly_data <- (the_data %>% filter(quadrat_size == "2x2")
+             %>% select(assembly_id, species_name))
+```
 
-Calculate assembly level PWOR.
+and then go through the same procedure as with the quadrat level analysis: make a graph and reduce its nodes; calculate assembly level PWOR.
+```{r}
+assembly_edges <- (full_join(assembly_data, assembly_data, by = "assembly_id")
+           %>% rename(from = species_name.x)
+           %>% rename(to = species_name.y)
+           %>%  select(-assembly_id)
+           %>% group_by(from, to) 
+           %>% summarise(wt = n())
+           %>% filter(from != to))
+assembly_nodes <- distinct(assembly_edges, from)
+
+ass_net <- graph_from_data_frame(d = assembly_edges, vertices = assembly_nodes, directed = F)
+ass_n2 <- simplify(ass_net, edge.attr.comb = "ignore")
+ass_edges2 <- as_data_frame(ass_n2, what="edges")
+
+# It's much quicker to read the file than to compute from scratch
+if (file.exists("Assembly_PWOR.csv"))
+{
+  ass_pwor <- read.csv("Assembly_PWOR.csv") 
+} else
+{
+  n <- length(row.names(ass_edges2))
+  ass_pwor <- tibble(
+    odds_ratio = 1:n,
+    ci_low = 1:n,
+    ci_high = 1:n)
+  for (i in seq_along(row.names(ass_edges2)))
+  {
+    ass_pwor[i,1:3] <- OddsRatio(assembly_data, ass_edges2$from[i], ass_edges2$to[i])
+  }
+  write.csv(ass_pwor, "Assembly_PWOR.csv")
+}
+ass_edges3 <-( bind_cols(ass_edges2, ass_pwor)
+           %>% filter(!is.infinite(odds_ratio))
+           %>% filter(!is.infinite(ci_low))
+           %>% filter(!is.infinite(ci_high))
+           %>% filter(!is.na(ci_low))
+           %>% filter(!is.na(ci_high))
+           %>% filter(ci_low > 1))
+ass_net2 <- graph_from_data_frame(d = ass_edges3, vertices = nodes, directed = F)
+ass_l <- layout.fruchterman.reingold(ass_net2)
+
+# Remove isolated vertices (species)
+isolated = which(degree(ass_net2)==0)
+ass_net3 = delete.vertices(ass_net2, isolated)
+ass_l2 = ass_l[-isolated,]
+# plot(ass_net3, layout=ass_l2, vertex.size = 5,vertex.label=NA)
+ass_wc <- cluster_walktrap(ass_net3)
+modularity(ass_wc)
+plot(ass_wc, ass_net3, layout = ass_l2, vertex.label=NA)
+```
+However. Leaving aside the beauty of modularity (which I'm sure I will return to), the purpose here was to investigate whether the pairwise odds_ratios (PWOR) could be used to get evidence for specific short range dependencies. So I will compare pairwise odds_ratios from shared quadrats with pairwise odds_ratios from whole assemblies. On the whole, we expect the assembly level PWOR to be greater than the quadrat level on account of the larger area sampled; there is more chance of two species sharing an assembly. This would not necessarily be the case, however, if (a) both members of a pair were very common - and particularly if they had large values for percentage cover - or (b) there was a specific close-range association between them (not excluded by case "a", of course). So pairs of relatively scarce plants for which PWOR is similar by quadrat and by assembly will be of interest.
+```{r}
+j1 <- left_join(ass_edges3, edges3, by = c("from", "to"))
+plt <- ggplot(j1, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
+  geom_point(aes(text = paste(from, to, sep=","))) +
+  geom_errorbar(ymin = log(j1$ci_low.y), ymax = log(j1$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.3) +
+  geom_smooth() +
+  geom_abline(colour = "red") +
+  labs( x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+plotly::ggplotly(plt)
+```
+Generally, odds ratios for the wider sample area (assemblies) are greater than odds ratios for the smaller sample area (quadrats) as would be expected. Blue line shows the fit. Only the 5% confidence intervals are shown; it looks as though even the outlier points are not very convincingly far from the fitted line. There are in fact no points for which ci_low(quadrats) > ci_high(assemblies) (checked with filter), and only for Carex_ovalis/Juncus_effusus is ci_low(quadrats) > odds_ratio(assemblies. Also, it is very difficult to believe that any of the identified outlying pairs have any necessary relationship with each other.
+
+So actually not very convincing. The snark is a boojum again.
+
