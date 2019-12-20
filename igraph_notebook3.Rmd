@@ -1,14 +1,14 @@
 ---
-title: "igraph notebook 2"
+title: "igraph notebook 3"
 output: html_notebook
 ---
-From igraph_notebook2.Rmd; need to follow up on the odds ratio idea, but possibly this may be facilitated by taking an accretionary approach to the graphs; I'm thinking of looking at the graph for a single quadrat, then adding the graphs for more quadrats, simplifying as we go. Start with the most species rich quadrats. But note we have 1223 quadrats!
-Load up some data ...
+Following igraph_notebook2. I remain impressed by ideas about the development of traits and co-evolution, e.g.  (*https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2148393/; The modularity of pollination networks; Jens M. Olesen, Jordi Bascompte, Yoko L. Dupont, and Pedro Jordano, 2007*). It occurs to me that there might be cooperative interactions between meadow plants, e.g. sharing mycorrhiza; or short-roots cooperating with deep roots; biochemical exchanges in the soil. Would these show up as short-range interactions between plants? Here I've examined communities based on the pairwise odds-ratio of plants being found in the same quadrat. Would truly short-range interactions show up less strongly in community structures based on pairwise odds-ratio of plants being found in the same assembly (bigger area)?
+
+Load libraries and functions:
 ```{r}
 # Libraries
 library("RMySQL")
 library(tidyverse)
-# library(corrplot)
 library(networkD3)
 library(igraph)
 
@@ -47,7 +47,7 @@ GetTheData <-  function()
                    host   = "sxouse.ddns.net")
   
   
-  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, visit_date, records_id, species.species_id, 
+  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, quadrat_size, visit_date, records_id, species.species_id, 
     species.species_name from assemblies
       join quadrats on quadrats.assembly_id = assemblies_id
       join visit_dates on quadrats.vd_id = visit_dates.vds_id
@@ -56,9 +56,9 @@ GetTheData <-  function()
       # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
       # exclude some odd assemblies with no assigned community
     where quadrat_count > 0 and species.species_id != 4 and community is not null;') 
-      # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
-      # the team have not decided
-      # on a sub-group.
+  # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
+  # the team have not decided
+  # on a sub-group.
   
   rs1 = dbSendQuery(con, q)
   return(as_tibble(fetch(rs1, n=-1)))
@@ -66,8 +66,9 @@ GetTheData <-  function()
 }
 
 OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
-  # Not used yet. Need to check warnings.
 {
+  A <- A[1]
+  B <- B[1]
   t <- d %>% filter(species_name %in% c(A, B))
   As <- t %>% filter(species_name == A)
   Bs <- t %>% filter(species_name == B)
@@ -81,37 +82,88 @@ OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
          %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
          %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
   s <- colSums(j2[,4:7])
-  return((s[1]*s[4])/(s[2]*s[3]))
+  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
+  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+  o_r <- (s[1]*s[4])/(s[2]*s[3])
+  ci_low <- exp(log(o_r)-1.96*se)
+  ci_high <- exp(log(o_r)+1.96*se)
+  retval <- c(o_r, ci_low, ci_high)
+  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
+  return(retval)
 }
 
 # End of functions
+```
 
+Load data, note excluding 4x4 quadrats so all this analysis is based on 2x2m quadrats. 
+```{r}
 d <- GetTheData()
-# the_data <- d %>% filter(community == "MG5c")
-the_data <- (d %>% filter(grepl("MG", community))
+the_data <- (d %>% filter(quadrat_size == "2x2")
              %>% select(quadrat_id, species_name))
 rm(d)
 ```
-Rank quadrats in order of species count:
+Making edges for the graph objects. The nodes (vertices) will be plant species, joined together by the fact of sharing a common quadrat. Note the group_by(from, to) followed by summarise(wt = n()). The weight (wt) is the number of quadrats that share this pait of plants.
 ```{r}
-sp_counts <- (the_data %>% group_by(quadrat_id) 
-              %>% summarise(sp_cnt = n()) 
-              %>% arrange(desc((sp_cnt))))
-```
-and then plot a graph of the quadrat with highest species count:
-```{r}
-d <- the_data %>% filter(quadrat_id  == sp_counts$quadrat_id[1])
-
-edges <- (full_join(d, d, by = "quadrat_id")
-          %>% rename(from = species_name.x)
-          %>% rename(to = species_name.y)
-          %>%  select(-quadrat_id)
-          %>% group_by(from, to) %>% summarise(wt = n())
-          %>% filter(from != to))
+edges <- (full_join(the_data, the_data, by = "quadrat_id")
+           %>% rename(from = species_name.x)
+           %>% rename(to = species_name.y)
+           %>%  select(-quadrat_id)
+           %>% group_by(from, to) 
+           %>% summarise(wt = n())
+           %>% filter(from != to))
 nodes <- distinct(edges, from)
+```
+The graph made from these edges and nodes (vertices) is huge and contains redundant edges arising from (a) plants always share a quadrat with themselves; and (b) if species A shares a quadrat with species B, then species B shares the quadrat with A. So there are twice as many edges as there need to be. I tried to find ways to eliminate the duplicate edges using my own code; in the end I found it easier to use igraph's simplify function.
+```{r}
 net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
 n2 <- simplify(net, edge.attr.comb = "ignore")
-l <- layout.fruchterman.reingold(net)
-plot(n2, layout=l, vertex.label=NA)
+edges2 <- as_data_frame(n2, what="edges")
 ```
-All this tells us is that all the species in that quadrat are found in that quadrat. Not very useful! Adding the next quadrat and simplifying won't really help - might just as well use n2 from igraph_notebook2.Rmd, which builds them in one go.
+The next step is to find a way to quantify the strength of the associations between pairs of plants, and to simplify the graph by eliminating weak associations. The weight parameter is perhaps not the most appropriate; I use odds ratio, the ratio of the odds of A in the presence of B and the odds of A in the absence of B (Wikipedia)
+```{r}
+# It's much quicker to read the file than to compute from scratch
+if (file.exists("Pairwise_Odds_Ratio.csv"))
+{
+  pairwise_o_r <- read.csv("Pairwise_Odds_Ratio.csv") 
+} else
+{
+  n <- length(row.names(edges2))
+  pairwise_o_r <- tibble(
+    odds_ratio = 1:n,
+    ci_low = 1:n,
+    ci_high = 1:n)
+  for (i in seq_along(row.names(edges2)))
+  {
+    pairwise_o_r[i,1:3] <- OddsRatio(the_data, edges2$from[i], edges2$to[i])
+  }
+}
+```
+The OddsRatio function calculates approximate confidence intervals as well as the ratio itslef, so now we can simplify things by removing edges where the low (5%) confidence limit is greater than 1 (odds ratio of 1 signifies absolute independence; greater than one is some degree of association. Less than one signifies relative exclusion).
+```{r}
+edges3 <-( bind_cols(edges2, pairwise_o_r)
+           %>% filter(!is.infinite(odds_ratio))
+           %>% filter(!is.infinite(ci_low))
+           %>% filter(!is.infinite(ci_high))
+           %>% filter(!is.na(ci_low))
+           %>% filter(!is.na(ci_high))
+           %>% filter(ci_low > 1))
+net2 <- graph_from_data_frame(d = edges3, vertices = nodes, directed = F)
+l <- layout.fruchterman.reingold(net2)
+plot(net2, layout=l, vertex.size = 2, vertex.label=NA)
+```
+This graph shows that removing low odds-ratio edges has isolated many species, we need to remove them too.
+```{r}
+# Remove isolated vertices (species)
+isolated = which(degree(net2)==0)
+net3 = delete.vertices(net2, isolated)
+l2 = l[-isolated,]
+plot(net3, layout=l2, vertex.size = 5,vertex.label=NA)
+```
+And now we are in a position to look for evidence of some kind of community structure:
+
+```{r}
+wc <- cluster_walktrap(net3)
+modularity(wc)
+plot(wc, net3, layout = l2, vertex.label=NA)
+```
+
