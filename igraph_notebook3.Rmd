@@ -65,7 +65,7 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
-OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
+OddsRatio <-  function(d, A, B) # quadrat_data, species_name, species_name
 {
   A <- A[1]
   B <- B[1]
@@ -97,14 +97,14 @@ OddsRatio <-  function(d, A, B) # the_data, species_name, species_name
 
 Load data, note excluding 4x4 quadrats so all this analysis is based on 2x2m quadrats. 
 ```{r}
-d <- GetTheData()
-the_data <- (d %>% filter(quadrat_size == "2x2")
+the_data <- GetTheData()
+quadrat_data <- (the_data %>% filter(quadrat_size == "2x2")
              %>% select(quadrat_id, species_name))
-rm(d)
+
 ```
 Making edges for the graph objects. The nodes (vertices) will be plant species, joined together by the fact of sharing a common quadrat. Note the group_by(from, to) followed by summarise(wt = n()). The weight (wt) is the number of quadrats that share this pait of plants.
 ```{r}
-edges <- (full_join(the_data, the_data, by = "quadrat_id")
+edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
            %>% rename(from = species_name.x)
            %>% rename(to = species_name.y)
            %>%  select(-quadrat_id)
@@ -134,7 +134,7 @@ if (file.exists("Pairwise_Odds_Ratio.csv"))
     ci_high = 1:n)
   for (i in seq_along(row.names(edges2)))
   {
-    pairwise_o_r[i,1:3] <- OddsRatio(the_data, edges2$from[i], edges2$to[i])
+    pairwise_o_r[i,1:3] <- OddsRatio(quadrat_data, edges2$from[i], edges2$to[i])
   }
 }
 ```
@@ -166,4 +166,8 @@ wc <- cluster_walktrap(net3)
 modularity(wc)
 plot(wc, net3, layout = l2, vertex.label=NA)
 ```
+Cluster_walktrap finds 5 communities; 1 - 3 are large, 5 is a singleton (Linum_catharticum) and 4 consistes of Fissidens_taxifolius, Oenanthe_pimpinelloides, Plagiomnium_undulatum. Only a single assembly contained corky fruited water dropwort, community 4 is likely driven by that fact.
 
+However. Leaving aside the beauty of modularity (which I'm sure I will return to), the purpose here was to investigate whether the pairwise odds_ratios (PWOR) could be used to get evidence for specific short range dependencies. So I will compare pairwise odds_ratios from shared quadrats with pairwise odds_ratios from whole assemblies. On the whole, we expect the assembly level PWOR to be greater than the quadrat level on account of the latger area sampled; there is more chance of two species sharing an assembly. This would not necessarily be the case, however, if (a) both members of a pair were very common - and particularly if they had large values for percentage cover - or (b) there was a specific close-range association between them (not excluded by case "a", of course). So pairs of relatively scarce plants for which PWOR is similar by quadrat and by assembly will be of interest.
+
+Calculate assembly level PWOR.
