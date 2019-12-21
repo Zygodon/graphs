@@ -104,14 +104,14 @@ quadrat_data <- (the_data %>% filter(quadrat_size == "2x2")
              %>% select(quadrat_id, species_name))
 
 ```
-Making edges for the graph objects. The nodes (vertices) will be plant species, joined together by the fact of sharing a common quadrat. Note the group_by(from, to) followed by summarise(wt = n()). The weight (wt) is the number of quadrats that share this pait of plants.
+Making edges for the graph objects. The nodes (vertices) will be plant species, joined together by the fact of sharing a common quadrat. Note the group_by(from, to) followed by summarise(share_2x2 = n()). The weight (share_2x2) is the number of quadrats that share this pait of plants.
 ```{r}
 edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
            %>% rename(from = species_name.x)
            %>% rename(to = species_name.y)
            %>%  select(-quadrat_id)
            %>% group_by(from, to) 
-           %>% summarise(wt = n())
+           %>% summarise(share_2x2 = n())
            %>% filter(from != to))
 nodes <- distinct(edges, from)
 ```
@@ -184,7 +184,7 @@ assembly_edges <- (full_join(assembly_data, assembly_data, by = "assembly_id")
            %>% rename(to = species_name.y)
            %>%  select(-assembly_id)
            %>% group_by(from, to) 
-           %>% summarise(wt = n())
+           %>% summarise(share_2x2 = n())
            %>% filter(from != to))
 assembly_nodes <- distinct(assembly_edges, from)
 
@@ -231,15 +231,19 @@ plot(ass_wc, ass_net3, layout = ass_l2, vertex.label=NA)
 However. Leaving aside the beauty of modularity (which I'm sure I will return to), the purpose here was to investigate whether the pairwise odds_ratios (PWOR) could be used to get evidence for specific short range dependencies. So I will compare pairwise odds_ratios from shared quadrats with pairwise odds_ratios from whole assemblies. On the whole, we expect the assembly level PWOR to be greater than the quadrat level on account of the larger area sampled; there is more chance of two species sharing an assembly. This would not necessarily be the case, however, if (a) both members of a pair were very common - and particularly if they had large values for percentage cover - or (b) there was a specific close-range association between them (not excluded by case "a", of course). So pairs of relatively scarce plants for which PWOR is similar by quadrat and by assembly will be of interest.
 ```{r}
 j1 <- left_join(ass_edges3, edges3, by = c("from", "to"))
-plt <- ggplot(j1, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
-  geom_point(aes(text = paste(from, to, sep=","))) +
-  geom_errorbar(ymin = log(j1$ci_low.y), ymax = log(j1$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.3) +
-  geom_smooth() +
-  geom_abline(colour = "red") +
-  labs( x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
-plotly::ggplotly(plt)
+j2 <-  left_join(j1, edges, by = c("from", "to")) %>% filter(share_2x2 >= 20)
+plt2 <- ggplot(j2, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
+  geom_errorbar(ymin = log(j2$ci_low.y), ymax = log(j2$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  geom_smooth() + 
+  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+plotly::ggplotly(plt2)
+
 ```
-Generally, odds ratios for the wider sample area (assemblies) are greater than odds ratios for the smaller sample area (quadrats) as would be expected. Blue line shows the fit. Only the 5% confidence intervals are shown; it looks as though even the outlier points are not very convincingly far from the fitted line. There are in fact no points for which ci_low(quadrats) > ci_high(assemblies) (checked with filter), and only for Carex_ovalis/Juncus_effusus is ci_low(quadrats) > odds_ratio(assemblies. Also, it is very difficult to believe that any of the identified outlying pairs have any necessary relationship with each other.
 
-So actually not very convincing. The snark is a boojum again.
+The graph shows log(odds ratio) for plant pairs that share 20 or more quadrats. I've removed the many cases with fewer shared quadrats (Wikipedia on the confidence intervals: "This is an asymptotic approximation, and will not give a meaningful result if any of the cell counts are very small.") At the moment we are interested only in points above the blue regression line, so only the 5% confidence intervals are shown, to avoid clutter. Points are coloured according to the number of shared 2m x 2m quadrats they represent (share_2x2).
 
+We notice that the most highly shared quadrats - representing joint occurrences of the commoner species - are mainly below the regression line. Why should this be? My expectation was that pairs of commoner plants that shared common habitats would have high odds ratio by quadrat as well as by assembly; there would be relatively little difference between the two.The reverse appears to be the case.
+
+Pairs above the line - pairs for which the chance of finding them together in single quadrats is greater than average - tend to be less frequent (lower count of shared occurrences at the quadrat level). These tend to be plant pairs for which one or both species are less common. For several of them, the 5% confidence interval for the odds ratio by quadrat is above the regression line, which could be taken as indicating a believably high value, and could be regarded as evidence for short-range specificity; i.e. these plants may be in some kind of symbiotic relationship operating on a scale within 2m x 2m.
