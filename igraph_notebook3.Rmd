@@ -236,13 +236,13 @@ plt2 <- ggplot(j2, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
   geom_errorbar(ymin = log(j2$ci_low.y), ymax = log(j2$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
   scale_colour_gradient(low = "sienna1", high = "black") +
-  geom_smooth() + 
+  geom_smooth(method = "lm") + 
   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
 plotly::ggplotly(plt2)
 
 ```
 
-The graph shows log(odds ratio) for plant pairs that share 20 or more quadrats. I've removed the many cases with fewer shared quadrats (Wikipedia on the confidence intervals: "This is an asymptotic approximation, and will not give a meaningful result if any of the cell counts are very small.") At the moment we are interested only in points above the blue regression line, so only the 5% confidence intervals are shown, to avoid clutter. Points are coloured according to the number of shared 2m x 2m quadrats they represent (share_2x2).
+The graph shows log(odds ratio) for plant pairs that share 20 or more quadrats. I've removed the many cases with fewer shared quadrats (Wikipedia on the confidence intervals: "This is an asymptotic approximation, and will not give a meaningful result if any of the cell counts are very small.") At the moment we are interested only in points above the blue regression line, so only the (downwards)5% confidence intervals are shown, to avoid clutter. Points are coloured according to the number of shared 2m x 2m quadrats they represent (share_2x2).
 
 We notice that the most highly shared quadrats - representing joint occurrences of the commoner species - are mainly below the regression line. Why should this be? My expectation was that pairs of commoner plants that shared common habitats would have high odds ratio by quadrat as well as by assembly; there would be relatively little difference between the two.The reverse appears to be the case.
 
