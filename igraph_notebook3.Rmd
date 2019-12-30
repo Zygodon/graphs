@@ -12,6 +12,7 @@ library(tidyverse)
 library(networkD3)
 library(igraph)
 library(plotly)
+library(DT)
 
 # Functions
 dbDisconnectAll <- function(){
@@ -244,11 +245,11 @@ plotly::ggplotly(plt2)
 
 ```
 
-The graph shows log(odds ratio) for plant pairs that share 20 or more quadrats. I've removed the many cases with fewer shared quadrats (Wikipedia on the confidence intervals: "This is an asymptotic approximation, and will not give a meaningful result if any of the cell counts are very small.") At the moment we are interested only in points above the blue regression line, so only the (downwards)5% confidence intervals are shown, to avoid clutter. Points are coloured according to the number of shared 2m x 2m quadrats they represent (share_2x2).
+The graph shows log(odds ratio) for plant pairs that share 20 or more quadrats. I've removed the many cases with fewer shared quadrats (Wikipedia on the confidence intervals: "This is an asymptotic approximation, and will not give a meaningful result if any of the cell counts are very small.") At the moment we are interested mainly in points above the blue regression line, so only the (downwards)5% confidence intervals are shown, to avoid clutter. Points are coloured according to the number of shared 2m x 2m quadrats they represent (share_2x2).
 
-We notice that the most highly shared quadrats - representing joint occurrences of the commoner species - are mainly below the regression line. Why should this be? My expectation was that pairs of commoner plants that shared common habitats would have high odds ratio by quadrat as well as by assembly; there would be relatively little difference between the two.The reverse appears to be the case.
+We notice that the most highly shared quadrats - representing joint occurrences of the commoner species - are mainly below the regression line. Why should this be? My expectation was that pairs of commoner plants that shared common habitats would have high odds ratio by quadrat as well as by assembly; there would be relatively little difference between the two.The reverse appears to be the case. So, these could be cases where members of a pair actively exclude each other - which would be just as interesting as what I was looking for, pairs that  occur toghether more frequently than we might expect.
 
-Pairs above the line - pairs for which the chance of finding them together in single quadrats is greater than average - tend to be less frequent (lower count of shared occurrences at the quadrat level). These tend to be plant pairs for which one or both species are less common. For several of them, the 5% confidence interval for the odds ratio by quadrat is above the regression line, which could be taken as indicating a believably high value, and could be regarded as evidence for short-range specificity; i.e. these plants may be in some kind of symbiotic relationship operating on a scale within 2m x 2m.
+Pairs above the line - pairs for which the chance of finding them together in single quadrats is greater than average - tend to be less frequent (lower count of shared occurrences at the quadrat level;paler coloured points). These tend to be plant pairs for which one or both species are less common. For several of them, the 5% confidence interval for the odds ratio by quadrat is above the regression line, which could be taken as indicating a believably high value, and could be regarded as evidence for short-range specificity; e.g. these plants may be in some kind of symbiotic relationship operating on a scale within 2m x 2m.
 
 Candidates for this relationship extracted and listed in the table below.
 
@@ -261,5 +262,26 @@ candidates <- (filter(j2, log(ci_low.y) > predict.model..se...F.)
                %>% select(from, to, share_2x2))
 datatable(candidates)
 ```
+To conclude this notebook, I'll make the PWOR scatter plot like the above, but showing 95% ci to find candidates for (competitive?) exclusion:
+```{r}
+plt3 <- ggplot(j2, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
+  geom_errorbar(ymax = log(j2$ci_high.y), ymin = log(j2$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  geom_smooth(method = "lm") + 
+  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+plotly::ggplotly(plt3)
 
+```
+And list pairs for which the 95% ci lies below the regression line:
+```{r}
+# predict fitted values for each observation in the original dataset
+candidates2 <- (filter(j2, log(ci_high.y) < predict.model..se...F.)
+               %>% select(from, to, share_2x2))
+datatable(candidates2)
+
+```
+There are more candidates for these short-range negative interactions than there are for the positive interactions (55 to 24).
+
+I'm going to turn now to simulating expected outcomes, using simulated plant pairs with known PWOR but NO short range interactions. I think I need to open a new notebppk for this; if all goes well, the entire investigation might be suitably re_wrapped in a dashboard.
 
