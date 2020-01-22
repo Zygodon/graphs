@@ -5,7 +5,7 @@ output: html_notebook
 Following igraph_notebook2. I remain impressed by ideas about the development of traits and co-evolution, e.g.  (*https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2148393/; The modularity of pollination networks; Jens M. Olesen, Jordi Bascompte, Yoko L. Dupont, and Pedro Jordano, 2007*). It occurs to me that there might be cooperative interactions between meadow plants, e.g. sharing mycorrhiza; or short-roots cooperating with deep roots; biochemical exchanges in the soil. Would these show up as short-range interactions between plants? Here I've examined communities based on the pairwise odds-ratio of plants being found in the same quadrat. Would truly short-range interactions show up less strongly in community structures based on pairwise odds-ratio of plants being found in the same assembly (bigger area)?
 
 Load libraries and functions:
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Libraries
 library("RMySQL")
 library(tidyverse)
@@ -57,7 +57,8 @@ GetTheData <-  function()
       join species on species.species_id = records.species_id
       # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
       # exclude some odd assemblies with no assigned community
-    where quadrat_count > 0 and species.species_id != 4 and community is not null;') 
+    where quadrat_count > 0 and species.species_id != 4 and community is not null
+    and quadrat_size = "2x2";') 
   # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
   # the team have not decided
   # on a sub-group.
@@ -99,14 +100,14 @@ OddsRatio <-  function(d, A, B) # assembly/quadrat data, species_name, species_n
 ```
 
 Load data, note excluding 4x4 quadrats so all this analysis is based on 2x2m quadrats. 
-```{r}
+```{r message=FALSE, warning=FALSE}
 the_data <- GetTheData()
 quadrat_data <- (the_data %>% filter(quadrat_size == "2x2")
              %>% select(quadrat_id, species_name))
 
 ```
 Making edges for the graph objects. The nodes (vertices) will be plant species, joined together by the fact of sharing a common quadrat. Note the group_by(from, to) followed by summarise(share_2x2 = n()). The weight (share_2x2) is the number of quadrats that share this pait of plants.
-```{r}
+```{r message=FALSE, warning=FALSE}
 edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
            %>% rename(from = species_name.x)
            %>% rename(to = species_name.y)
@@ -117,13 +118,13 @@ edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
 nodes <- distinct(edges, from)
 ```
 The graph made from these edges and nodes (vertices) is huge and contains redundant edges arising from (a) plants always share a quadrat with themselves; and (b) if species A shares a quadrat with species B, then species B shares the quadrat with A. So there are twice as many edges as there need to be. I tried to find ways to eliminate the duplicate edges using my own code; in the end I found it easier to use igraph's simplify function.
-```{r}
+```{r message=FALSE, warning=FALSE}
 net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
 n2 <- simplify(net, edge.attr.comb = "ignore")
 edges2 <- as_data_frame(n2, what="edges")
 ```
 The next step is to find a way to quantify the strength of the associations between pairs of plants, and to simplify the graph by eliminating weak associations. The weight parameter is perhaps not the most appropriate; I use odds ratio, the ratio of the odds of A in the presence of B and the odds of A in the absence of B (Wikipedia)
-```{r}
+```{r message=FALSE, warning=FALSE}
 # It's much quicker to read the file than to compute from scratch
 if (file.exists("Quadrat_PWOR.csv"))
 {
@@ -143,7 +144,7 @@ if (file.exists("Quadrat_PWOR.csv"))
 }
 ```
 The OddsRatio function calculates approximate confidence intervals as well as the ratio itslef, so now we can simplify things by removing edges where the low (5%) confidence limit is greater than 1 (odds ratio of 1 signifies absolute independence; greater than one is some degree of association. Less than one signifies relative exclusion).
-```{r}
+```{r message=FALSE, warning=FALSE}
 edges3 <-( bind_cols(edges2, quadrat_pwor)
            %>% filter(!is.infinite(odds_ratio))
            %>% filter(!is.infinite(ci_low))
@@ -156,7 +157,7 @@ l <- layout.fruchterman.reingold(net2)
 plot(net2, layout=l, vertex.size = 2, vertex.label=NA)
 ```
 This graph shows that removing low odds-ratio edges has isolated many species, we need to remove them too.
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Remove isolated vertices (species)
 isolated = which(degree(net2)==0)
 net3 = delete.vertices(net2, isolated)
@@ -165,7 +166,7 @@ plot(net3, layout=l2, vertex.size = 5,vertex.label=NA)
 ```
 And now we are in a position to look for evidence of some kind of community structure:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 wc <- cluster_walktrap(net3)
 modularity(wc)
 plot(wc, net3, layout = l2, vertex.label=NA)
@@ -173,13 +174,13 @@ plot(wc, net3, layout = l2, vertex.label=NA)
 Cluster_walktrap finds 5 communities; 1 - 3 are large, 5 is a singleton (Linum_catharticum) and 4 consistes of Fissidens_taxifolius, Oenanthe_pimpinelloides, Plagiomnium_undulatum. Only a single assembly contained corky fruited water dropwort, community 4 is likely driven by that fact.
 
 Calculate assembly level PWOR. Extract assembly_id and species names
-```{r}
+```{r message=FALSE, warning=FALSE}
 assembly_data <- (the_data %>% filter(quadrat_size == "2x2")
              %>% select(assembly_id, species_name))
 ```
 
 and then go through the same procedure as with the quadrat level analysis: make a graph and reduce its nodes; calculate assembly level PWOR.
-```{r}
+```{r message=FALSE, warning=FALSE}
 assembly_edges <- (full_join(assembly_data, assembly_data, by = "assembly_id")
            %>% rename(from = species_name.x)
            %>% rename(to = species_name.y)
@@ -230,13 +231,13 @@ modularity(ass_wc)
 plot(ass_wc, ass_net3, layout = ass_l2, vertex.label=NA)
 ```
 However. Leaving aside the beauty of modularity (which I'm sure I will return to), the purpose here was to investigate whether the pairwise odds_ratios (PWOR) could be used to get evidence for specific short range dependencies. So I will compare pairwise odds_ratios from shared quadrats with pairwise odds_ratios from whole assemblies. On the whole, we expect the assembly level PWOR to be greater than the quadrat level on account of the larger area sampled; there is more chance of two species sharing an assembly. This would not necessarily be the case, however, if (a) both members of a pair were very common - and particularly if they had large values for percentage cover - or (b) there was a specific close-range association between them (not excluded by case "a", of course). So pairs of relatively scarce plants for which PWOR is similar by quadrat and by assembly will be of interest.
-```{r}
-j1 <- left_join(ass_edges3, edges3, by = c("from", "to"))
+```{r message=FALSE, warning=FALSE}
+j1 <- left_join(ass_edges3, edges3, by = c("from", "to"), suffix = c(".pooled", ".single"))
 j2 <-  (left_join(j1, edges, by = c("from", "to")) 
         %>% filter(share_2x2 >= 20)
-        %>% filter(!is.na(odds_ratio.y)))
-plt2 <- ggplot(j2, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
-  geom_errorbar(ymin = log(j2$ci_low.y), ymax = log(j2$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+        %>% filter(!is.na(odds_ratio.single)))
+plt2 <- ggplot(j2, aes(x=log(odds_ratio.pooled), y=log(odds_ratio.single))) +
+  geom_errorbar(ymin = log(j2$ci_low.single), ymax = log(j2$odds_ratio.single), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
   scale_colour_gradient(low = "sienna1", high = "black") +
   geom_smooth(method = "lm") + 
@@ -253,19 +254,19 @@ Pairs above the line - pairs for which the chance of finding them together in si
 
 Candidates for this relationship extracted and listed in the table below.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # predict fitted values for each observation in the original dataset
-model <- lm(log(odds_ratio.y) ~ log(odds_ratio.x), data = j2)
+model <- lm(log(odds_ratio.single) ~ log(odds_ratio.pooled), data = j2)
 model_fit <- data.frame(predict(model, se = F))
 j2 <- bind_cols(j2, model_fit)
-candidates <- (filter(j2, log(ci_low.y) > predict.model..se...F.)
+candidates <- (filter(j2, log(ci_low.single) > predict.model..se...F.)
                %>% select(from, to, share_2x2))
 datatable(candidates)
 ```
 To conclude this notebook, I'll make the PWOR scatter plot like the above, but showing 95% ci to find candidates for (competitive?) exclusion:
-```{r}
-plt3 <- ggplot(j2, aes(x=log(odds_ratio.x), y=log(odds_ratio.y))) +
-  geom_errorbar(ymax = log(j2$ci_high.y), ymin = log(j2$odds_ratio.y), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+```{r message=FALSE, warning=FALSE}
+plt3 <- ggplot(j2, aes(x=log(odds_ratio.pooled), y=log(odds_ratio.single))) +
+  geom_errorbar(ymax = log(j2$ci_high.single), ymin = log(j2$odds_ratio.single), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
   scale_colour_gradient(low = "sienna1", high = "black") +
   geom_smooth(method = "lm") + 
@@ -274,7 +275,7 @@ plotly::ggplotly(plt3)
 
 ```
 And list pairs for which the 95% ci lies below the regression line:
-```{r}
+```{r message=FALSE, warning=FALSE}
 # predict fitted values for each observation in the original dataset
 candidates2 <- (filter(j2, log(ci_high.y) < predict.model..se...F.)
                %>% select(from, to, share_2x2))
@@ -283,5 +284,7 @@ datatable(candidates2)
 ```
 There are more candidates for these short-range negative interactions than there are for the positive interactions (55 to 24).
 
-I'm going to turn now to simulating expected outcomes, using simulated plant pairs with known PWOR but NO short range interactions. I think I need to open a new notebppk for this; if all goes well, the entire investigation might be suitably re_wrapped in a dashboard.
+I'm going to turn now to simulating expected outcomes, using simulated plant pairs with known PWOR but NO short range interactions.
+
+It took a while to get my ideas sorted out, but now I have a function, quadrat_or_given_assembly, that returns the expected quadrat_based odds ratio given assembly level data for a species pair.
 
