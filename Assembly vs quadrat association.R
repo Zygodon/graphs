@@ -146,12 +146,14 @@ for (i in 1:length(edges[,1]))
 edges <- bind_cols(edges, lpv)
 edges <- edges %>% filter(p_val < 0.01)
 
+
 # Pr_h1 <- L1[1]*prior/(L1[1]*prior + L1[2]*(1 - prior))
 # Pr_h2 <- L2[1]*prior/(L2[1]*prior + L2[2]*(1 - prior))
 
 # Consider the two hypotheses as exclusive:
-
-Pr_h2_ex <- L2[1]*prior_ex/((L1[1]*prior_ex) + L2[1]*prior_ex)
+edges <- edges %>% group_by(from, to) %>% mutate(Pr_h2_ex = L_q/(L_q + L_ass))
+# !!! Only some mutual exclusions at the quadrat level between the 
+# commonest species are likely to be significant.
 
 # ### Plots
 # x <- seq(0, 1, 0.01)
