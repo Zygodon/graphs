@@ -235,65 +235,67 @@ colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "
 rm(assembly_pwor, quadrat_pwor)
 pwor <- pwor %>% filter(!is.infinite(assembly_or)) %>% filter(assembly_or > 0.0)
 
-plt1 <- ggplot(pwor, aes(x=log(assembly_or), y=log(quadrat_or))) +
-  geom_abline(colour = "red") +
-  geom_errorbar(ymin = log(pwor$quadrat_ci_low), ymax = log(pwor$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
-  # geom_point(aes(colour = "brown", text = paste(from, to, sep=","))) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
-  geom_smooth(method = "lm") + 
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
-plotly::ggplotly(plt1)
+# plt1 <- ggplot(pwor, aes(x=log(assembly_or), y=log(quadrat_or))) +
+#   geom_abline(colour = "red") +
+#   geom_errorbar(ymin = log(pwor$quadrat_ci_low), ymax = log(pwor$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+#   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
+#   # geom_point(aes(colour = "brown", text = paste(from, to, sep=","))) +
+#   scale_colour_gradient(low = "sienna1", high = "black") +
+#   geom_smooth(method = "lm") + 
+#   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+# plotly::ggplotly(plt1)
 
 # predict fitted values for each observation in the original dataset
-model <- lm(log(quadrat_or) ~ log(assembly_or), data = pwor)
-model_fit <- data.frame(predict(model, se = F))
-candidates <- bind_cols(pwor, model_fit)
-candidates <- filter(candidates, log(quadrat_ci_low) > predict.model..se...F.)
+# model <- lm(log(quadrat_or) ~ log(assembly_or), data = pwor)
+# model_fit <- data.frame(predict(model, se = F))
+# candidates <- bind_cols(pwor, model_fit)
+# candidates <- filter(candidates, log(quadrat_ci_low) > predict.model..se...F.)
 #               %>% select(from, to, share_2x2))
 
-plt2 <- ggplot(candidates, aes(x=log(assembly_or), y=log(quadrat_or))) +
-  geom_abline(colour = "red") +
-  geom_errorbar(ymin = log(candidates$quadrat_ci_low), ymax = log(candidates$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
-  # geom_smooth(method = "lm") + 
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
-plotly::ggplotly(plt2)
+# plt2 <- ggplot(candidates, aes(x=log(assembly_or), y=log(quadrat_or))) +
+#   geom_abline(colour = "red") +
+#   geom_errorbar(ymin = log(candidates$quadrat_ci_low), ymax = log(candidates$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+#   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
+#   scale_colour_gradient(low = "sienna1", high = "black") +
+#   # geom_smooth(method = "lm") + 
+#   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+# plotly::ggplotly(plt2)
 
-candidates2 <-  filter(pwor, quadrat_ci_low > assembly_or)
-plt3 <- ggplot(candidates2, aes(x=log(assembly_or), y=log(quadrat_or))) +
-  geom_abline(colour = "red") +
-  geom_errorbar(ymin = log(candidates2$quadrat_ci_low), ymax = log(candidates2$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
-  # geom_smooth(method = "lm") + 
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
-plotly::ggplotly(plt3)
+# candidates2 <-  filter(pwor, quadrat_ci_low > assembly_or)
+# plt3 <- ggplot(candidates2, aes(x=log(assembly_or), y=log(quadrat_or))) +
+#   geom_abline(colour = "red") +
+#   geom_errorbar(ymin = log(candidates2$quadrat_ci_low), ymax = log(candidates2$quadrat_ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
+#   geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
+#   scale_colour_gradient(low = "sienna1", high = "black") +
+#   # geom_smooth(method = "lm") + 
+#   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats")
+# plotly::ggplotly(plt3)
 
 # With candidates2, plot observed quadrat_or ~ simulated quadrat_or|assembly_or
-candidates2 <- candidates2 %>% filter(assembly_or > 1)
+# candidates2 <- candidates2 %>% filter(assembly_or > 1)
 expected_qor <- tibble(
-  A = candidates2$from,
-  B = candidates2$to,
-  ci_low = candidates2$quadrat_ci_low,
-  ci_high = candidates2$quadrat_ci_high,
-  share_2x2 = candidates2$share_2x2,
-  obs = candidates2$quadrat_or,
-  expected = 0.0)
+  A = pwor$from,
+  B = pwor$to,
+  ci_low = pwor$quadrat_ci_low,
+  ci_high = pwor$quadrat_ci_high,
+  share_2x2 = pwor$share_2x2,
+  obs = pwor$quadrat_or,
+  expected = NA)
 for (i in seq_along(row.names(expected_qor)))
 {
-  expected_qor[i,7] <- QuadratORGivenAssemblyOR(candidates2$assembly_or[i], 
-                      candidates2$amx[i], candidates2$amy[i], sim_length = 2000)
+  expected_qor[i,7] <- try(QuadratORGivenAssemblyOR(pwor$assembly_or[i], 
+                      pwor$amx[i], pwor$amy[i], sim_length = 2000))
 }
+expected_qor <- expected_qor %>% filter(!is.na(expected))
 
-plt4 <- ggplot(expected_qor, aes(x=log(expected), y=log(obs)), colour = "blue") +
+plt4 <- ggplot(expected_qor, aes(x=log(as.numeric(expected)), y=log(obs)), colour = "blue") +
   geom_abline(colour = "blue")+
   geom_errorbar(ymin = log(expected_qor$ci_low), ymax = log(expected_qor$ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
   geom_point(aes(colour = share_2x2,text = paste(A, B, sep=","))) +
   scale_colour_gradient(low = "sienna1", high = "black") +
   labs(x = "simulated log(quadratOR|assemblyOR)", y = "log(observed quadratOR") +
-  theme_grey() +  coord_cartesian(xlim = c(0, 1), ylim = c(0,4))
+  theme_grey() # +  coord_cartesian(xlim = c(0, 1), ylim = c(0,4))
 plotly::ggplotly(plt4)
 
+# write.csv(pwor, "pwor.csv", row.names = FALSE)
 # 
