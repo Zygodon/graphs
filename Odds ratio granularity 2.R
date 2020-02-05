@@ -198,11 +198,12 @@ for (i in seq_along(row.names(a)))
   a$est[i] <- AssemblyORGivenQuadratOR(c(pwor$jp1[i], pwor$jp2[i], pwor$jp3[i], pwor$jp4[i]))
 } 
 plt1 <- ggplot(a, aes(x=obs, y=est), colour = "blue") +
-  geom_abline(colour = "blue") +
+  geom_abline(colour = "green") +
   #geom_errorbar(ymin = log(expected_qor$ci_low), ymax = log(expected_qor$ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2, text = paste(A, B, sep=","))) +
+  geom_smooth(method = "auto", size = 0.5) +
+  geom_point(aes(colour = share_2x2, text = paste(A, B, sep=","), alpha = 0.5)) +
   scale_colour_gradient(low = "sienna1", high = "black") +
-  geom_smooth(method=lm) +
   labs(x = "observed assembly log(odds ratio)", y = "predicted assembly log(odds ratio)") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plotly::ggplotly(plt1)
+
