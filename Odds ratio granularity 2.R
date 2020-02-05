@@ -4,6 +4,10 @@
 # 1 - (1-p)^5 giving a prediction of assembly level odds ratio based only on the quadrat 
 # level associations.
 # If quadrat level associations were unimportant we would expect 0 correlation.
+# If assembly level correlations were unimportant we would expect perfect correlation.
+# The plots suggest a strong contribution to assembly correlation from quadrat
+# correlation.
+
 # Libraries
 library("RMySQL")
 library(tidyverse)
@@ -184,7 +188,11 @@ rm(assembly_pwor, quadrat_pwor)
 pwor <- pwor %>% filter(!is.infinite(assembly_or))
 
 # Make tibble for estimated assemblyOR from quadrat contingency
-a <- tibble(obs = pwor$assembly_or, est = pwor$assembly_or)
+# a <- tibble(obs = pwor$assembly_or, est = pwor$assembly_or)
+a <- pwor %>% select(from, to, share_2x2, assembly_or)
+a$est <- 0.0
+colnames(a) <- c("A", "B", "share_2x2", "obs", "est")
+
 for (i in seq_along(row.names(a)))
 {
   a$est[i] <- AssemblyORGivenQuadratOR(c(pwor$jp1[i], pwor$jp2[i], pwor$jp3[i], pwor$jp4[i]))
@@ -192,9 +200,9 @@ for (i in seq_along(row.names(a)))
 plt1 <- ggplot(a, aes(x=obs, y=est), colour = "blue") +
   geom_abline(colour = "blue") +
   #geom_errorbar(ymin = log(expected_qor$ci_low), ymax = log(expected_qor$ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point() +
-  # geom_point(aes(text = paste(A, B, sep=","))) +
-  # scale_colour_gradient(low = "sienna1", high = "black") +
+  geom_point(aes(colour = share_2x2, text = paste(A, B, sep=","))) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  geom_smooth(method=lm) +
   labs(x = "observed assembly log(odds ratio)", y = "predicted assembly log(odds ratio)") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plotly::ggplotly(plt1)
