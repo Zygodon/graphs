@@ -277,7 +277,17 @@ for (i in seq_along(row.names(expected_qor)))
   expected_qor[i,7] <- simulated_or[1]
   expected_qor[i,8] <- simulated_or[2]
 }
-expected_qor <- expected_qor %>% filter(!is.na(expected))
+expected_qor <- expected_qor %>% filter(!is.na(expected_q))
+
+# Plot simulated vs observed qor
+plt4 <- ggplot(expected_qor, aes(x=log(obs), y=log(as.numeric(expected_q)))) +
+  geom_abline(colour = "green")+
+  geom_smooth(method = "auto", size = 0.5) +
+  geom_point(aes(colour = share_2x2,text = paste(A, B, sep=",")), alpha = 0.5) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  labs(x = "log(observed quadratOR)", y = "log(simulated quadratOR|assemblyOR)") +
+  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
+plotly::ggplotly(plt4)
 
 # Plot observed vs simulated qor
 plt5 <- ggplot(expected_qor, aes(x=log(as.numeric(expected_q)), y=log(obs)), colour = "blue") +
