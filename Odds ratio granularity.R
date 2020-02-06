@@ -1,3 +1,27 @@
+# Odds ratio granularity.R (1)
+#
+# Attempt to visualise the importance
+# of specifically quadrat level association by reconstructing assembly
+# level associations by simulation where the quadrat level association
+# is destroyed. 
+# In this case, if quadrat level were unimportant, the
+# simuation would not affect the reconstructed assembly level odds ratios,
+# so the graph of simulated assembly OR vs observed assembly OR would
+# have the points on or near the unit slope.
+# Conversely, if assembly level associations were unimportant (so, only
+# quadrat associations contribute to the odds ratios), the points on the graph 
+# would lie on a horizontal line crossing the origin. The result is near
+# the second of these two scenarios, demonstrating the importance of 
+# associations between plants in the same quadrat, not just in the 
+# same assembly.
+
+# The second plot checks that the simulation has in fact recovered the 
+# observed assembly level odds ratios, while destroying any extra 
+# association at the quadrat level.
+
+# NOTE: Log odds ratio used throughout. i.e. for "odds ratio" everywhere, read
+# "log(odds_ratio)".
+
 # Libraries
 library("RMySQL")
 library(tidyverse)
