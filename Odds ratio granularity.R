@@ -4,7 +4,6 @@ library(tidyverse)
 library(networkD3)
 library(igraph)
 library(plotly)
-library(DT)
 
 # Functions
 dbDisconnectAll <- function(){
@@ -60,33 +59,6 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
-AssemblyOddsRatio <- function(A, B) # assembly_data assumed global
-{
-  As <- assembly_data %>% filter(species_name == A)
-  Bs <- assembly_data %>% filter(species_name == B)
-  j1 <- full_join(As, Bs, by = "assembly_id")
-  # Get all the assemblies, including ones with neither A nor B
-  q <- assembly_data %>% distinct(assembly_id) 
-  j2 <- (left_join(q, j1, by = "assembly_id") 
-         # NOTE: column length q >= column length j1
-         %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
-         %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
-         %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
-         %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
-  s <- colSums(j2[,4:7])
-  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
-  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
-  o_r <- (s[1]*s[4])/(s[2]*s[3])
-  ci_low <- exp(log(o_r)-1.96*se)
-  ci_high <- exp(log(o_r)+1.96*se)
-  # Marginal sums of the joint probability distribution
-  marg_x <- (s[1] + s[2])/(s[1] + s[2] + s[3] + s[4])
-  marg_y <- (s[1] + s[3])/(s[1] + s[2] + s[3] + s[4])
-  retval <- c(o_r, ci_low, ci_high, marg_x, marg_y)
-  names(retval) <- c("odds_ratio", "ci_low", "ci_high", "marg_x", "marg_y")
-  return(retval)
-}
-
 OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_name
 {
   d <- d %>% rename("id" = 1)
@@ -107,9 +79,9 @@ OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_n
   s <- colSums(j2[,4:7])
   # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
   se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
-  o_r <- (s[1]*s[4])/(s[2]*s[3])
-  ci_low <- exp(log(o_r)-1.96*se)
-  ci_high <- exp(log(o_r)+1.96*se)
+  o_r <- log((s[1]*s[4])/(s[2]*s[3])) # Return the LOG OR
+  ci_low <- o_r - 1.96*se
+  ci_high <- o_r + 1.96*se
   # Marginal sums of the joint probability distribution
   marg_x <- (s[1] + s[2])/(s[1] + s[2] + s[3] + s[4])
   marg_y <- (s[1] + s[3])/(s[1] + s[2] + s[3] + s[4])
@@ -119,7 +91,7 @@ OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_n
 }
 
 QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool_size = 5)
-  # r: assembly odds ratio
+  # r: assembly log odds ratio
   # marg_x: assembly marginal probability for species X
   # marg_y: assembly marginal probability for species Y
   # sim_length: number of simulated trials
@@ -132,14 +104,17 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
   # Don't really need this as we could just retain the colSums from the
   # Odds ratio function and get the joint probability table directly
   
+  r <- exp(r)
   s <- sqrt((1 + (marg_x + marg_y)*(r - 1))^2 + 4*r*(1 - r)*marg_x*marg_y)
   # Calculate the joint probability (contingency) table
   p11 <- ((marg_x + marg_y)*(r-1) - s + 1)/(2*(r-1))
   p10 <- marg_x - p11
   p01 <- marg_y - p11
   p00 <- 1 - marg_y - p10
-  # r_check <- (p00*p11)/(p01*p10) # ie check we have actually recoverd
+  # Check we have actually recoverd
   # the assembly odds ratio, so the joint probability table is OK
+  # r_check <- (p00*p11)/(p01*p10)
+  # cat("check: ", r, r_check, "\n", sep = ", ")
   
   # Simulate the observed assembly data
   sim <-  tibble(trials = sample(c("X1Y1", "X0Y1", "X1Y0", "X0Y0"), sim_length, 
@@ -178,7 +153,7 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
   # Calculate the expected quadrat odds ratios given the observed assembly
   # odds ratios but with no local effects
   csums <- colSums(quads[5:8])
-  quad_or <- (csums[1]*csums[4])/(csums[2]*csums[3])
+  quad_or <- log((csums[1]*csums[4])/(csums[2]*csums[3]))
   # Calculate the assembly OR: have we retained it?
   ass_x <-  quads %>% group_by(ass) %>% summarise(max(X))
   ass_y <-  quads %>% group_by(ass) %>% summarise(max(Y))
@@ -190,8 +165,8 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
               %>% mutate(X0Y0 = (X == 0)&(Y == 0))
               %>% select(X1Y1, X1Y0, X0Y1, X0Y0))
   csums <- colSums(ass)
-  ass_or <- (csums[1]*csums[4])/(csums[2]*csums[3])
-  return (c(quad_or, ass_or))
+  ass_or <- log((csums[1]*csums[4])/(csums[2]*csums[3]))
+  return (list(quad_or, ass_or))
 } # end function
 
 
@@ -202,6 +177,7 @@ sp_count <- the_data %>% group_by(species_id) %>% summarise(n = n())
 sp_list <- sp_count %>% filter(n > 20)
 # the_data with reduced species count
 the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
+### the_data <- the_data %>% sample_n(1000)
 rm(sp_count, sp_list)
 
 # Select followed by distinct gives us just the occurrence of each species in each assembly,
@@ -238,7 +214,8 @@ assembly_pwor <- tibble(
   marg_y = 1:n)
 for (i in seq_along(row.names(edges)))
 {
-  assembly_pwor[i,1:5] <- AssemblyOddsRatio(edges$from[i], edges$to[i])
+  # assembly_pwor[i,1:5] <- AssemblyOddsRatio(edges$from[i], edges$to[i])
+  assembly_pwor[i,1:5] <- OddsRatio(assembly_data, edges$from[i], edges$to[i])
 } 
 
 # Now take the same set of species pairs and make the quadrats odds ratios
@@ -257,7 +234,7 @@ pwor <- bind_cols(quadrat_pwor, assembly_pwor)
 colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "quadrat_ci_high", 
                     "qmx", "qmy", "assembly_or", "assembly_ci_low", "assembly_ci_high", "amx", "amy")
 rm(assembly_pwor, quadrat_pwor)
-pwor <- pwor %>% filter(!is.infinite(assembly_or)) %>% filter(assembly_or > 0.0)
+pwor <- pwor %>% filter(!is.infinite(assembly_or)) # %>% filter(assembly_or > 0.0)
 
 # tibble to hold simulation results
 expected_qor <- tibble(
@@ -267,20 +244,21 @@ expected_qor <- tibble(
   ci_high = pwor$quadrat_ci_high,
   share_2x2 = pwor$share_2x2,
   obs = pwor$quadrat_or,
-  expected_q = NA,
-  expected_a = NA)
+  expected_q = 0.0,
+  expected_a = 0.0)
 # Simulate quadrat OR expected if there were no local effect
 for (i in seq_along(row.names(expected_qor)))
 {
   simulated_or <- try(QuadratORGivenAssemblyOR(pwor$assembly_or[i], 
-                      pwor$amx[i], pwor$amy[i], sim_length = 2000))
-  expected_qor[i,7] <- simulated_or[1]
-  expected_qor[i,8] <- simulated_or[2]
+                      pwor$amx[i], pwor$amy[i], sim_length = 2000)) #2000))
+  # Don't understand why as.numeric needed here.
+  expected_qor[i,7] <- as.numeric(simulated_or[1])
+  expected_qor[i,8] <- as.numeric(simulated_or[2])
 }
 expected_qor <- expected_qor %>% filter(!is.na(expected_q))
 
 # Plot simulated vs observed qor
-plt4 <- ggplot(expected_qor, aes(x=log(obs), y=log(as.numeric(expected_q)))) +
+plt4 <- ggplot(expected_qor, aes(x=obs, y=expected_q)) +
   geom_abline(colour = "green")+
   geom_smooth(method = "auto", size = 0.5) +
   geom_point(aes(colour = share_2x2,text = paste(A, B, sep=",")), alpha = 0.5) +
@@ -289,28 +267,17 @@ plt4 <- ggplot(expected_qor, aes(x=log(obs), y=log(as.numeric(expected_q)))) +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plotly::ggplotly(plt4)
 
-# Plot observed vs simulated qor
-plt5 <- ggplot(expected_qor, aes(x=log(as.numeric(expected_q)), y=log(obs)), colour = "blue") +
-  geom_abline(colour = "blue")+
-  geom_errorbar(ymin = log(expected_qor$ci_low), ymax = log(expected_qor$ci_high), size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2,text = paste(A, B, sep=","))) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
-  labs(x = "simulated log(quadratOR|assemblyOR)", y = "log(observed quadratOR") +
-  # xlim(-2, 3) + ylim(-2, 3) +
-  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
-plotly::ggplotly(plt5)
-
 # write.csv(expected_qor, "expected QOR 10K iterations.csv", row.names = FALSE)
 # 
 
 # Check recovery of assembly odds ratio
-# Plot observed aor vs aor recovered from simulation: shoul be straight line unit slope
+# Plot observed aor vs aor recovered from simulation: should be straight line unit slope
 recovered_aor <- bind_cols(pwor %>% select(assembly_or), expected_qor %>% select(expected_a))
-plt6 <- ggplot(recovered_aor, aes(x=log(assembly_or), y=log(as.numeric(expected_a))), colour = "blue") +
+# Don't understand why the as.numeric should be required here.
+plt6 <- ggplot(recovered_aor, aes(x=assembly_or, y=as.numeric(expected_a)), colour = "blue") +
   geom_abline(colour = "blue") +
   geom_point() +
   labs(x = "log(observed assembly_or)", y = "log(recovered assembly_or)") +
-  # xlim(-3, 3) + ylim(-3, 3)
   theme_grey() + coord_cartesian(xlim = c(-3, 3), ylim = c(-3,3))
 plotly::ggplotly(plt6)
 
