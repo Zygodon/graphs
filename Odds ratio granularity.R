@@ -48,7 +48,7 @@ GetTheData <-  function()
       join species on species.species_id = records.species_id
       # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
       # exclude some odd assemblies with no assigned community
-    where quadrat_count > 0 and species.species_id != 4 and community is not null
+    where quadrat_count = 5 and species.species_id != 4 and community is not null
     and quadrat_size = "2x2";') 
   # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
   # the team have not decided
