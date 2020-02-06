@@ -178,6 +178,7 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
   # odds ratios but with no local effects
   csums <- colSums(quads[5:8])
   quad_or <- log((csums[1]*csums[4])/(csums[2]*csums[3]))
+  
   # Calculate the assembly OR: have we retained it?
   ass_x <-  quads %>% group_by(ass) %>% summarise(max(X))
   ass_y <-  quads %>% group_by(ass) %>% summarise(max(Y))
@@ -258,7 +259,7 @@ pwor <- bind_cols(quadrat_pwor, assembly_pwor)
 colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "quadrat_ci_high", 
                     "qmx", "qmy", "assembly_or", "assembly_ci_low", "assembly_ci_high", "amx", "amy")
 rm(assembly_pwor, quadrat_pwor)
-pwor <- pwor %>% filter(!is.infinite(assembly_or)) # %>% filter(assembly_or > 0.0)
+pwor <- pwor %>% filter(!is.infinite(assembly_or))  %>% filter(!is.na(assembly_or))
 
 # tibble to hold simulation results
 expected_qor <- tibble(
@@ -267,7 +268,8 @@ expected_qor <- tibble(
   ci_low = pwor$quadrat_ci_low,
   ci_high = pwor$quadrat_ci_high,
   share_2x2 = pwor$share_2x2,
-  obs = pwor$quadrat_or,
+  obs_q = pwor$quadrat_or,
+  obs_a = pwor$assembly_or,
   expected_q = 0.0,
   expected_a = 0.0)
 # Simulate quadrat OR expected if there were no local effect
@@ -276,13 +278,14 @@ for (i in seq_along(row.names(expected_qor)))
   simulated_or <- try(QuadratORGivenAssemblyOR(pwor$assembly_or[i], 
                       pwor$amx[i], pwor$amy[i], sim_length = 2000)) #2000))
   # Don't understand why as.numeric needed here.
-  expected_qor[i,7] <- as.numeric(simulated_or[1])
-  expected_qor[i,8] <- as.numeric(simulated_or[2])
+  expected_qor[i,8] <- as.numeric(simulated_or[1])
+  expected_qor[i,9] <- as.numeric(simulated_or[2])
+  cat("iteration ", i, "\n")
 }
 expected_qor <- expected_qor %>% filter(!is.na(expected_q))
 
 # Plot simulated vs observed qor
-plt4 <- ggplot(expected_qor, aes(x=obs, y=expected_q)) +
+plt4 <- ggplot(expected_qor, aes(x=obs_q, y=expected_q)) +
   geom_abline(colour = "green")+
   geom_smooth(method = "auto", size = 0.5) +
   geom_point(aes(colour = share_2x2,text = paste(A, B, sep=",")), alpha = 0.5) +
@@ -291,17 +294,17 @@ plt4 <- ggplot(expected_qor, aes(x=obs, y=expected_q)) +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plotly::ggplotly(plt4)
 
-# write.csv(expected_qor, "expected QOR 10K iterations.csv", row.names = FALSE)
-# 
-
 # Check recovery of assembly odds ratio
 # Plot observed aor vs aor recovered from simulation: should be straight line unit slope
-recovered_aor <- bind_cols(pwor %>% select(assembly_or), expected_qor %>% select(expected_a))
+# recovered_aor <- bind_cols(pwor %>% select(assembly_or), expected_qor %>% select(expected_a))
 # Don't understand why the as.numeric should be required here.
-plt6 <- ggplot(recovered_aor, aes(x=assembly_or, y=as.numeric(expected_a)), colour = "blue") +
+plt6 <- ggplot(expected_qor, aes(x=obs_a, y=as.numeric(expected_a)), colour = "blue") +
   geom_abline(colour = "blue") +
   geom_point() +
   labs(x = "log(observed assembly_or)", y = "log(recovered assembly_or)") +
   theme_grey() + coord_cartesian(xlim = c(-3, 3), ylim = c(-3,3))
 plotly::ggplotly(plt6)
+
+write.csv(expected_qor, "predicted assembly_OR with no quadrat_OR.csv", row.names = FALSE)
+# 
 
