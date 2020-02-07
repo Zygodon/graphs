@@ -58,7 +58,7 @@ GetTheData <-  function()
       join species on species.species_id = records.species_id
       # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
       # exclude some odd assemblies with no assigned community
-    where quadrat_count > 0 and species.species_id != 4 and community is not null
+    where quadrat_count = 5 and species.species_id != 4 and community is not null
     and quadrat_size = "2x2";') 
   # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
   # the team have not decided
@@ -187,13 +187,14 @@ colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "
 rm(assembly_pwor, quadrat_pwor)
 pwor <- pwor %>% filter(!is.infinite(assembly_or))
 
-# Make tibble for estimated assemblyOR from quadrat contingency
-# a <- tibble(obs = pwor$assembly_or, est = pwor$assembly_or)
+# Make tibble for estimated assemblyOR
 a <- pwor %>% select(from, to, share_2x2, assembly_or)
 a$est <- 0.0
 colnames(a) <- c("A", "B", "share_2x2", "obs", "est")
 
 for (i in seq_along(row.names(a)))
+  # But here I'm giving it the ASSEMBLY joint contingencies
+  # which is wrong.
 {
   a$est[i] <- AssemblyORGivenQuadratOR(c(pwor$jp1[i], pwor$jp2[i], pwor$jp3[i], pwor$jp4[i]))
 } 
@@ -206,4 +207,6 @@ plt1 <- ggplot(a, aes(x=obs, y=est), colour = "blue") +
   labs(x = "observed assembly log(odds ratio)", y = "predicted assembly log(odds ratio)") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plotly::ggplotly(plt1)
+
+# write.csv(a, "predicted assembly_OR from quadrat_OR.csv", row.names = FALSE)
 

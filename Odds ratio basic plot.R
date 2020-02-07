@@ -225,12 +225,16 @@ sfx <- tibble( sfx = pwor$A) # Arbitrary character string
 for (i in seq_along(row.names(pwor)))
 {
    x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
-   sf <- SfChi(x)
+   sf <- SfChi(x) #sfx: significance Chisquare.test: p < 0.05
    sfx$sfx[i] <- sf
    cat(i, sf, "\n")
 }
 pwor$sfx <- sfx$sfx
 rm(sfx)
+
+# Join /share_2x2 for later use
+pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
+
 lin_model <- y ~ x # For stat_poly_eq
 
 # Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
@@ -250,4 +254,4 @@ plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
 # plotly::ggplotly(plt2) # plotly not available with stat_poly_eq
 plot(plt2)
 
-write.csv(pwor, "basic odds ratio data.csv", row.names = FALSE)
+# write.csv(pwor, "contingency.csv", row.names = FALSE)
