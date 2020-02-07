@@ -117,7 +117,11 @@ AssemblyORGivenQuadratOR <- function(pr)
   return(lor)
 }
 
-
+SfChi <-  function(jc)
+{
+  x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
+  ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
+}
 ######
 the_data <- GetTheData()
 # Restrict analysis to species with more than 20 hits
@@ -192,18 +196,21 @@ colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "
                     "ajc1", "ajc2", "ajc3", "ajc4")
 rm(assembly_pwor, quadrat_pwor)
 pwor <- pwor %>% filter(!is.infinite(assembly_or)) %>% filter(!is.na(assembly_or))
+sfx <- tibble( sfx = pwor$from)
 for (i in seq_along(row.names(pwor)))
 {
-  x <- matrix(unlist(pwor[i, 9:12]), ncol = 2, nrow = 2, byrow = T)
-  pwor$p[i] <- chisq.test(x)$p.value
-  cat(i,  "\n")
+   x <- matrix(unlist(pwor[i, 9:12]), ncol = 2, nrow = 2, byrow = T)
+   sf <- SfChi(x)
+   sfx$sfx[i] <- sf
+   cat(i, sf, "\n")
 }
-pwor <- pwor %>% filter(p<0.05)
+pwor$sfx <- sfx$sfx
 plt2 <- ggplot(pwor, aes(x=assembly_or, y=quadrat_or)) +
   # geom_errorbar(ymin = pwor$quadrat_ci_low, ymax = pwor$quadrat_ci_high, size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_point(aes(colour = share_2x2, text = paste(from, to, sep=","))) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
   geom_smooth(method = "lm") + 
+  geom_point(aes(shape = sfx, colour = share_2x2, text = paste(from, to, sep=",")), alpha = 0.5) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  scale_shape_manual(values = c(3, 19)) +
   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
   theme_grey() + coord_cartesian(xlim = c(min(pwor$assembly_or), max(pwor$quadrat_or)), 
                                  ylim = c(min(pwor$assembly_or), max(pwor$quadrat_or)))
