@@ -14,6 +14,7 @@ library(tidyverse)
 library(networkD3)
 library(igraph)
 library(plotly)
+library(ggpmisc)
 
 # Functions
 dbDisconnectAll <- function(){
@@ -69,12 +70,11 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
-OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_name
+JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, species_name
 {
   d <- d %>% rename("id" = 1)
   A <- A[1]
   B <- B[1]
-  # t <- d %>% filter(species_name %in% c(A, B))
   As <- d %>% filter(species_name == A)
   Bs <- d %>% filter(species_name == B)
   j1 <- full_join(As, Bs, by = "id")
@@ -82,11 +82,32 @@ OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_n
   q <- d %>% distinct(id) 
   j2 <- (left_join(q, j1, by = "id") 
          # NOTE: column length q >= column length j1
-         %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
-         %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
-         %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
-         %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
+         %>% mutate(X1Y1 = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(X1Y0 = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(X0Y1 = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(X0Y0 = is.na(species_name.x) & is.na(species_name.y)))
   s <- colSums(j2[,4:7])
+  return(s)
+}
+
+OddsRatio <-  function(s) # Joint contingency (colSums)
+{
+  # d <- d %>% rename("id" = 1)
+  # A <- A[1]
+  # B <- B[1]
+  # # t <- d %>% filter(species_name %in% c(A, B))
+  # As <- d %>% filter(species_name == A)
+  # Bs <- d %>% filter(species_name == B)
+  # j1 <- full_join(As, Bs, by = "id")
+  # # Get all the assemblies/quadrats, including ones with neither A nor B
+  # q <- d %>% distinct(id) 
+  # j2 <- (left_join(q, j1, by = "id") 
+  #        # NOTE: column length q >= column length j1
+  #        %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
+  #        %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
+  #        %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
+  #        %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
+  # s <- colSums(j2[,4:7])
   #gt <- sum(s)
   #joint_p <- s/gt
   # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
@@ -94,12 +115,8 @@ OddsRatio <-  function(d, A, B) # quadrat/assembly data, species_name, species_n
   o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
   ci_low <- o_r - 1.96*se
   ci_high <- o_r + 1.96*se
-  # Marginal sums of the joint probability distribution
-  marg_x <- (s[1] + s[2])/(s[1] + s[2] + s[3] + s[4])
-  marg_y <- (s[1] + s[3])/(s[1] + s[2] + s[3] + s[4])
-  retval <- c(o_r, ci_low, ci_high, marg_x, marg_y, s) #joint_p)
-  names(retval) <- c("odds_ratio", "ci_low", "ci_high", "marg_x", "marg_y", 
-                     "jc1", "jc2", "jc3", "jc4")
+  retval <- c(o_r, ci_low, ci_high)
+  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
   return(retval)
 }
 
@@ -122,6 +139,7 @@ SfChi <-  function(jc)
   x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
   ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
 }
+
 ######
 the_data <- GetTheData()
 # Restrict analysis to species with more than 20 hits
@@ -156,65 +174,80 @@ edges <- as_data_frame(n2, what="edges")
 rm(nodes, net, n2)
 
 # For each species pair, get the assembly odds ratio.
-n <- length(row.names(edges))
 assembly_pwor <- tibble(
-  odds_ratio = 1:n,
-  ci_low = 1:n,
-  ci_high = 1:n,
-  marg_x = 1:n,
-  marg_y = 1:n,
-  jc1 = 1:n,
-  jc2 = 1:n,
-  jc3 = 1:n,
-  jc4 = 1:n)
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  aor = 0,
+  ci_low = 0,
+  ci_high = 0)
+
 for (i in seq_along(row.names(edges)))
 {
-  assembly_pwor[i,1:9] <- OddsRatio(assembly_data, edges$from[i], edges$to[i])
-} 
+  s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+  assembly_pwor[i, 3:6] <- s[1:4]
+  assembly_pwor[i, 7:9] <- OddsRatio(s)
+} # Don't remove NAs at this stage
+
 
 # Now take the same set of species pairs and make the quadrats odds ratios
 quadrat_pwor <- tibble(
-  odds_ratio = 1:n,
-  ci_low = 1:n,
-  ci_high = 1:n,
-  marg_x = 1:n,
-  marg_y = 1:n,
-  jc1 = 1:n,
-  jc2 = 1:n,
-  jc3 = 1:n,
-  jc4 = 1:n)
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  qor = 0,
+  ci_low = 0,
+  ci_high = 0)
 
 for (i in seq_along(row.names(edges)))
 {
-  quadrat_pwor[i,1:9] <- OddsRatio(quadrat_data, edges$from[i], edges$to[i])
-}
-quadrat_pwor <- bind_cols(edges, quadrat_pwor)
-pwor <- bind_cols(quadrat_pwor, assembly_pwor)
-colnames(pwor) <- c("from", "to", "share_2x2", "quadrat_or", "quadrat_ci_low", "quadrat_ci_high", 
-                    "qmx", "qmy", "qjc1", "qjc2", "qjc3", "qjc4", "assembly_or", 
-                    "assembly_ci_low", "assembly_ci_high", "amx", "amy",
-                    "ajc1", "ajc2", "ajc3", "ajc4")
+  s <- JointContingency(quadrat_data, edges$from[i], edges$to[i])
+  quadrat_pwor[i, 3:6] <- s[1:4]
+  quadrat_pwor[i, 7:9] <- OddsRatio(s)
+} # Don't remove NAs at this stage
+
+# quadrat_pwor <- bind_cols(edges, quadrat_pwor)
+pwor <- (left_join(quadrat_pwor, assembly_pwor, by = c("A", "B"))
+        %>% filter(!is.na(qor))
+        %>% filter(!is.infinite(qor))
+        %>% filter(!is.na(aor))
+        %>% filter(!is.infinite(aor)))
 rm(assembly_pwor, quadrat_pwor)
-pwor <- pwor %>% filter(!is.infinite(assembly_or)) %>% filter(!is.na(assembly_or))
-sfx <- tibble( sfx = pwor$from)
+
+# Add Chisquare test result (p < 0.05)
+sfx <- tibble( sfx = pwor$A) # Arbitrary character string
 for (i in seq_along(row.names(pwor)))
 {
-   x <- matrix(unlist(pwor[i, 9:12]), ncol = 2, nrow = 2, byrow = T)
+   x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
    sf <- SfChi(x)
    sfx$sfx[i] <- sf
    cat(i, sf, "\n")
 }
 pwor$sfx <- sfx$sfx
-plt2 <- ggplot(pwor, aes(x=assembly_or, y=quadrat_or)) +
-  # geom_errorbar(ymin = pwor$quadrat_ci_low, ymax = pwor$quadrat_ci_high, size = 0.1, width = 0.1, colour = "green", alpha = 0.6) +
-  geom_smooth(method = "lm") + 
-  geom_point(aes(shape = sfx, colour = share_2x2, text = paste(from, to, sep=",")), alpha = 0.5) +
-  scale_colour_gradient(low = "sienna1", high = "black") +
-  scale_shape_manual(values = c(3, 19)) +
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
-  theme_grey() + coord_cartesian(xlim = c(min(pwor$assembly_or), max(pwor$quadrat_or)), 
-                                 ylim = c(min(pwor$assembly_or), max(pwor$quadrat_or)))
-plotly::ggplotly(plt2)
+rm(sfx)
+lin_model <- y ~ x # For stat_poly_eq
 
+# Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
+# tend to be higher than quadrat OR because of increased expectation that
+# a pair of plants will be found together in the larger area.
+plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
+  geom_smooth(method = lm) + 
+  stat_poly_eq(formula = lin_model,
+               eq.with.lhs = "italic(hat(y))~`=`~",
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE) +         
+  geom_point(aes(colour = sfx, text = paste(A, B, sep=",")), alpha = 0.5) +
+  scale_colour_manual(values = c("grey27", "sienna3")) +
+  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
+  theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
+                                 ylim = c(min(pwor$aor), max(pwor$qor)))
+# plotly::ggplotly(plt2) # plotly not available with stat_poly_eq
+plot(plt2)
 
 write.csv(pwor, "basic odds ratio data.csv", row.names = FALSE)
