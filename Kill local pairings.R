@@ -180,9 +180,7 @@ plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
                 size = 0.1, width = 0.1, colour = "black", alpha = 0.5) +
   geom_point(aes(x = pwor$aor, y = pwor$sim_q,
              text = paste(pwor$A, pwor$B, sep=",")), shape = 1, 
-             colour = "olivedrab3", alpha = 0.5) +
-  # geom_point(aes(colour = sfx, text = paste(A, B, sep=",")), alpha = 0.5) +
-  # scale_colour_manual(values = c("grey27", "sienna3")) +
+             colour = "grey20", alpha = 0.5) +
   geom_point(aes(colour = share_2x2, text = paste(A, B, sep=",")), alpha = 0.5) +
   scale_colour_gradient(low = "sienna1", high = "black") +
   labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
@@ -196,7 +194,7 @@ friends <- datatable(pwor %>% filter((sim_q_high < ci_low.x) & sfx == "yes")
             colnames = c('log(odds ratio)' = 4, 'shared quadrats' = 5))
 friends <- friends %>%  formatSignif('log(odds ratio)',2)
 
-enemies <- datatable(pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes") & (qor < 0))
+enemies <- datatable(pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
             %>% select(A, B, qor, share_2x2),
             caption = 'Plants that avoid sharing a quadrat',
             colnames = c('log(odds ratio)' = 4, 'shared quadrats' = 5))
