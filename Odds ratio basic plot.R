@@ -1,12 +1,3 @@
-# Predict assembly odds ratio from quadrat odds ratio treating species hits combinations
-# (X1Y1, X1Y0, X0Y1, X0Y0) as Bernouilli events and so calculating a 5-quadrat assembly
-# joint probability matrix from the probability of at least one event on 5 trials: 
-# 1 - (1-p)^5 giving a prediction of assembly level odds ratio based only on the quadrat 
-# level associations.
-# If quadrat level associations were unimportant we would expect 0 correlation.
-# If assembly level correlations were unimportant we would expect perfect correlation.
-# The plots suggest a strong contribution to assembly correlation from quadrat
-# correlation.
 
 # Libraries
 library("RMySQL")
@@ -92,24 +83,6 @@ JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, spe
 
 OddsRatio <-  function(s) # Joint contingency (colSums)
 {
-  # d <- d %>% rename("id" = 1)
-  # A <- A[1]
-  # B <- B[1]
-  # # t <- d %>% filter(species_name %in% c(A, B))
-  # As <- d %>% filter(species_name == A)
-  # Bs <- d %>% filter(species_name == B)
-  # j1 <- full_join(As, Bs, by = "id")
-  # # Get all the assemblies/quadrats, including ones with neither A nor B
-  # q <- d %>% distinct(id) 
-  # j2 <- (left_join(q, j1, by = "id") 
-  #        # NOTE: column length q >= column length j1
-  #        %>% mutate(AandB = !is.na(species_name.x) & !is.na(species_name.y))
-  #        %>% mutate(AnotB = !is.na(species_name.x) & is.na(species_name.y))
-  #        %>% mutate(BnotA = !is.na(species_name.y) & is.na(species_name.x))
-  #        %>% mutate(neither = is.na(species_name.x) & is.na(species_name.y)))
-  # s <- colSums(j2[,4:7])
-  #gt <- sum(s)
-  #joint_p <- s/gt
   # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
   se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
   o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
