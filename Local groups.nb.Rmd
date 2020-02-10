@@ -1,0 +1,424 @@
+---
+title: "Local groups"
+output: html_notebook
+---
+
+```{r}
+# Libraries
+library("RMySQL")
+library(tidyverse)
+library(networkD3)
+library(igraph)
+library(plotly)
+library(ggpmisc)
+library(DT)
+library(gridExtra)
+
+# Functions
+dbDisconnectAll <- function(){
+  ile <- length(dbListConnections(MySQL())  )
+  lapply( dbListConnections(MySQL()), function(x) dbDisconnect(x) )
+  cat(sprintf("%s connection(s) closed.\n", ile))
+}
+
+# General SQL query
+query <- function(q)
+{
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+# Load the database
+GetTheData <-  function()
+{
+  # GET DATA FROM DB
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  
+  
+  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, quadrat_size, visit_date, records_id, species.species_id, 
+    species.species_name from assemblies
+      join quadrats on quadrats.assembly_id = assemblies_id
+      join visit_dates on quadrats.vd_id = visit_dates.vds_id
+      join records on records.quadrat_id = quadrats_id
+      join species on species.species_id = records.species_id
+      # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
+      # exclude some odd assemblies with no assigned community
+    where quadrat_count = 5 and species.species_id != 4 and community is not null
+    and quadrat_size = "2x2";') 
+  # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
+  # the team have not decided
+  # on a sub-group.
+  
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, species_name
+{
+  d <- d %>% rename("id" = 1)
+  A <- A[1]
+  B <- B[1]
+  As <- d %>% filter(species_name == A)
+  Bs <- d %>% filter(species_name == B)
+  j1 <- full_join(As, Bs, by = "id")
+  # Get all the assemblies/quadrats, including ones with neither A nor B
+  q <- d %>% distinct(id) 
+  j2 <- (left_join(q, j1, by = "id") 
+         # NOTE: column length q >= column length j1
+         %>% mutate(X1Y1 = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(X1Y0 = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(X0Y1 = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(X0Y0 = is.na(species_name.x) & is.na(species_name.y)))
+  s <- colSums(j2[,4:7])
+  return(s)
+}
+
+OddsRatio <-  function(s) # Joint contingency (colSums)
+{
+  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
+  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+  o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
+  ci_low <- o_r - 1.96*se
+  ci_high <- o_r + 1.96*se
+  retval <- c(o_r, ci_low, ci_high)
+  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
+  return(retval)
+}
+
+SfChi <-  function(jc)
+{
+  x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
+  ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
+}
+
+
+p1in5 <- function(p, n=5)
+{
+  return(1 - (1-p)^n)
+}
+
+QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool_size = 5)
+  # r: assembly log odds ratio
+  # marg_x: assembly marginal probability for species X
+  # marg_y: assembly marginal probability for species Y
+  # sim_length: number of simulated trials
+  # pool_size: quadrat count per assembly
+{
+
+  r <- exp(r)
+  s <- sqrt((1 + (marg_x + marg_y)*(r - 1))^2 + 4*r*(1 - r)*marg_x*marg_y)
+  # Calculate the joint probability (contingency) table
+  p11 <- ((marg_x + marg_y)*(r-1) - s + 1)/(2*(r-1))
+  p10 <- marg_x - p11
+  p01 <- marg_y - p11
+  p00 <- 1 - marg_y - p10
+
+  # Simulate the observed assembly data
+  sim <-  tibble(trials = sample(c("X1Y1", "X0Y1", "X1Y0", "X0Y0"), sim_length, 
+                                 prob = c(p11, p10, p01, p00), rep=T))
+
+  # Recover simulated marginal totals
+  simXY <- (sim %>% mutate(X = (trials == "X1Y1" | trials == "X1Y0"))
+            %>% mutate(Y = (trials == "X1Y1" | trials == "X0Y1")))
+  simXY$trial <- as.numeric(rownames(simXY))
+  simXY <- simXY %>% select(trial, X, Y)
+  
+  # Make a tibble to put the quadrat_level simulation in
+  quads <- tibble(q=rep(seq(1:pool_size), sim_length))
+  quads$ass <- c( 1, 1 + seq(1:(pool_size*sim_length)) %/% pool_size)[1:(pool_size*sim_length)] # 1,1,1,1,1;2,2,2,2,2; ...
+  # Set X and Y FALSE throughout
+  quads$X <- F
+  quads$Y <- F
+  # THE KEY STEPS
+  # Un-pool the samples, 5 to an "assembly", 
+  # and assign the hits at random between the 5 "quadrats".
+  # If there is a hit for X in "assembly" i, set one of the 5 "quadrats" X to TRUE at random
+  # Similarly for Y. This should retain the assembly level association, but
+  # completely destroy the local dependencies.
+  for (i in 0:(sim_length-1))
+  {
+    k <- sample(1:pool_size,1) # A number in c(1,2,3,4,5)
+    if(simXY$X[i+1]) quads$X[5*i+k] <- TRUE
+    k <- sample(1:pool_size,1)
+    if(simXY$Y[i+1]) quads$Y[5*i+k] <- TRUE
+  }
+  # Record the contingencies given no local effects 
+  quads <- quads %>% mutate(X1Y1 = X & Y)
+  quads <- quads %>% mutate(X1Y0 = X & !Y)
+  quads <- quads %>% mutate(X0Y1 = !X & Y)
+  quads <- quads %>% mutate(X0Y0 = !X & !Y)
+  # Calculate the expected quadrat odds ratios given the observed assembly
+  # odds ratios but with no local effects
+  s <- colSums(quads[5:8])
+  quad_or <- log((s[1]*s[4])/(s[2]*s[3]))
+  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+  q_ci_low <- quad_or - 1.96*se
+  q_ci_high <- quad_or + 1.96*se
+  
+  # Calculate the assembly OR: have we retained it?
+  ass_x <-  quads %>% group_by(ass) %>% summarise(max(X))
+  ass_y <-  quads %>% group_by(ass) %>% summarise(max(Y))
+  ass <- left_join(ass_x, ass_y, by = "ass")
+  ass <- ass %>% rename(X = "max(X)") %>% rename(Y = "max(Y)")
+  ass <- (ass %>% mutate(X1Y1 = (X == 1)&(Y == 1))
+              %>% mutate(X1Y0 = (X == 1)&(Y == 0))
+              %>% mutate(X0Y1 = (X == 0)&(Y == 1))
+              %>% mutate(X0Y0 = (X == 0)&(Y == 0))
+              %>% select(X1Y1, X1Y0, X0Y1, X0Y0))
+  csums <- colSums(ass)
+  ass_or <- log((csums[1]*csums[4])/(csums[2]*csums[3]))
+  return (list(quad_or, ass_or, q_ci_low, q_ci_high))
+} # end function
+
+
+###### END OF FUNCTIONS BLOCK ###########
+
+the_data <- GetTheData()
+# Restrict analysis to species with more than 20 hits
+sp_count <- the_data %>% group_by(species_id) %>% summarise(n = n())
+sp_list <- sp_count %>% filter(n > 20)
+# the_data with reduced species count
+the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
+rm(sp_count, sp_list)
+
+# Select followed by distinct gives us just the occurrence of each species in each assembly,
+# without multiple records of its occurrence.
+# This stage was missing in the previous attempt at assembly_level odds ratio.
+assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
+
+quadrat_data <- the_data %>% select(quadrat_id, species_name)
+# In order to use the odds ratio function, we need the species pairs
+# It will be better to get the species pairs from the quadrat data: assemblies
+# may have shared species that don't share a quadrat. All species sharing a 
+# quadrat imply a shared assembly.
+edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
+          %>% rename(from = species_name.x)
+          %>% rename(to = species_name.y)
+          %>%  select(-quadrat_id)
+          %>% group_by(from, to) 
+          %>% summarise(share_2x2 = n())
+          %>% filter(from != to))
+edges <- edges %>% filter(share_2x2 > 20)
+nodes <- distinct(edges, from)
+net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
+n2 <- simplify(net, edge.attr.comb = "first")
+edges <- as_data_frame(n2, what="edges")
+rm(nodes, net, n2)
+
+# For each species pair, get the assembly odds ratio.
+assembly_pwor <- tibble(
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  aor = 0,
+  ci_low = 0,
+  ci_high = 0)
+
+for (i in seq_along(row.names(edges)))
+{
+  s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+  assembly_pwor[i, 3:6] <- s[1:4]
+  assembly_pwor[i, 7:9] <- OddsRatio(s)
+} # Don't remove NAs at this stage
+
+
+# Now take the same set of species pairs and make the quadrats odds ratios
+quadrat_pwor <- tibble(
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  qor = 0,
+  ci_low = 0,
+  ci_high = 0)
+
+for (i in seq_along(row.names(edges)))
+{
+  s <- JointContingency(quadrat_data, edges$from[i], edges$to[i])
+  quadrat_pwor[i, 3:6] <- s[1:4]
+  quadrat_pwor[i, 7:9] <- OddsRatio(s)
+} # Don't remove NAs at this stage
+
+# quadrat_pwor <- bind_cols(edges, quadrat_pwor)
+pwor <- (left_join(quadrat_pwor, assembly_pwor, by = c("A", "B"))
+        %>% filter(!is.na(qor))
+        %>% filter(!is.infinite(qor))
+        %>% filter(!is.na(aor))
+        %>% filter(!is.infinite(aor)))
+rm(assembly_pwor, quadrat_pwor)
+
+# Add Chisquare test result (p < 0.05)
+sfx <- tibble( sfx = pwor$A) # Arbitrary character string
+for (i in seq_along(row.names(pwor)))
+{
+   x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
+   sf <- SfChi(x) #sfx: significance Chisquare.test: p < 0.05
+   sfx$sfx[i] <- sf
+   # cat(i, sf, "\n")
+}
+pwor$sfx <- sfx$sfx
+rm(sfx)
+
+# Join /share_2x2 for later use
+pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
+# write.csv(pwor, "contingency.csv", row.names = FALSE)
+```
+# Evidence for local interspecific associations from The River Ouse Project.
+
+As part of The River Ouse Project (University of Sussex insert link to website), we have been collecting survey data from species rich meadows since 2006. In the data used here the sampling unit is a 2m x 2m quadrat, and five samples were taken from uniform vegetation stands within a meadow.
+
+I was interested to examine the data for evidence of specific associations between plant pairs. For each possible pair of plants that were found reasonably frequently, I made presence/absence contingency tables and tested the significance of any correlation with the chi square statistic, accepting p < 0.05 as evidence for a significant association. I measured the strength of the associations using log(odds ratio) - link to Wikipedia article here - , where 0 indicates no association, positive values indicate positive association and negative values indicate exclusion (negative association). In what follows, "odds ratio" is to be understood as "log(odds ratio)", for brevity.
+
+The contingency tables could be constructed with co-occurences in stands (5 quadrats) or in individual quadrats. The chance of finding two species together in a five quadrat stand is clearly greater than finding them together in a single quadrat. The regression of quadrat odds ratio on stand odds ratio (Figure 1) is ..., less than 1.0 as expected.
+
+```{r}
+lin_model <- y ~ x # For stat_poly_eq
+
+# Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
+# tend to be higher than quadrat OR because of increased expectation that
+# a pair of plants will be found together in the larger area.
+plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
+  geom_smooth(method = lm) + 
+  stat_poly_eq(formula = lin_model,
+               eq.with.lhs = "italic(hat(y))~`=`~",
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE) +         
+  geom_point(aes(colour = sfx, text = paste(A, B, sep=",")), alpha = 0.5) +
+  scale_colour_manual(values = c("grey27", "sienna3")) +
+  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
+  theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
+                                 ylim = c(min(pwor$aor), max(pwor$qor)))
+plot(plt2)
+```
+
+The scatter of points around the regression line in Figure 1 suggested that for some species pairs there might be a greater than expected chance of finding them in the same quadrat, while for othere there might be less, perhaps indicating some short range (on the scale of 2m x 2m) interactions. Uniform stands are never truly uniform but have some level of granularity within which variations in abiotic or biotic environmental factors play a part in determining which species are locally present.
+
+It seemed worthwhile to examine whether the quadrat level associations may be stronger than would be expected by chance from the observed stand level associations.
+
+In a simulation study, I used the stand level contingency tables to sample the pairwise associations, using 2000 - 10000 draws per pair. Each sample in this simulation generates four numbers, A1B1, A1B0, A0B1, A0B0 element (0, 1) depending on the presence (1) or absence (0) of species A, B on each draw. The probabilities of generating A1B1 ... A0B0 for each species pair are derived from the joint assembly level contingency tables.
+```{r}
+# pwor columns to hold simulation results
+# expected_qor <- tibble(
+#   A = pwor$A,
+#   B = pwor$B,
+#   share_2x2 = pwor$share_2x2,
+#   obs_q = pwor$qor,
+#   obs_a = pwor$aor,
+  pwor$sim_q = 0.0
+  pwor$sim_a = 0.0
+  pwor$sim_q_low = 0.0
+  pwor$sim_q_high = 0.0
+
+# Simulate OR expected if there were no local effect
+for (i in seq_along(row.names(pwor)))
+{
+  s <- sum(pwor[i, 10:13])
+  # assembly marginal probabilities
+  amx <- (pwor$jc1.y[i] + pwor$jc3.y[i])/s
+  amy <- (pwor$jc1.y[i] + pwor$jc2.y[i])/s
+  simulated_or <- try(QuadratORGivenAssemblyOR(pwor$aor[i], 
+                      amx, amy, sim_length = 2000)) #2000))
+  # Don't understand why as.numeric needed here.
+  pwor$sim_q[i] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
+  pwor$sim_a[i] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
+  pwor$sim_q_low[i] <- as.numeric(simulated_or[3]) #
+  pwor$sim_q_high[i] <- as.numeric(simulated_or[4])  #
+}
+pwor <- pwor %>% filter(!is.na(sim_q))
+
+```
+For each draw, I extracted the marginal presence/absence of A, B (A = A1B1 OR A1B0, etc). I divided the samples into groups of five, representing stands, and redistributed the As, Bs randomly among the five samples (representing quadrats) in each stand. In this way the stand-level associations are preserved (Figure 2a), while the simulated quadrat-level associations are just what would be expected without any local effect. As Figure 2b shows, much local association has in fact been removed by the simulation. 
+
+```{r}
+# Plot simulated vs observed aor : expect near unit slope
+plt3 <- ggplot(pwor, aes(x = aor, y = sim_a)) +
+  geom_abline(colour = "green")+
+  geom_smooth(method = lm, size = 0.5) +
+  geom_point(alpha = 0.5) +
+  labs(x = "observed assembly odds ratio", y = "reconstructed assembly odds ratio") +
+  ggtitle("Figure 2a. Stand level associations retained by simulation") +
+  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
+#plot(plt3)
+
+# Plot simulated vs observed qor : expect near zero slope if
+# local influence in strength of association was important.
+lin_model <- y ~ x # For stat_poly_eq
+plt4 <- ggplot(pwor, aes(x = qor, y = sim_q)) +
+  geom_abline(colour = "green")+
+  geom_smooth(method = lm, size = 0.5) +
+  stat_poly_eq(formula = lin_model,
+               eq.with.lhs = "italic(hat(y))~`=`~",
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE) +         
+  geom_point(aes(text = paste(A, B, sep=",")), alpha = 0.5) +
+  # scale_colour_manual(values = c("grey27", "sienna3")) +
+  labs(x = "observed quadrat odds ratio)", y = "reconstructed quadrat odds ratio)") +
+  ggtitle("Figure 2b. Quadrat OR with no local effects") +
+  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
+# plot(plt4)
+grid.arrange(plt3, plt4, ncol = 2)
+```
+Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs assembly odds ratios shows the magnitude of local effects (Figure 3).
+```{r}
+# Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
+# quadrat OR
+plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
+  geom_smooth(method = lm) +
+  geom_errorbar(aes(ymin = ci_low.x, ymax = ci_high.x), 
+                size = 0.1, width = 0.1, colour = "green", alpha = 0.5) +
+  geom_errorbar(aes(ymin = sim_q_low, ymax = sim_q_high), 
+                size = 0.1, width = 0.1, colour = "black", alpha = 0.5) +
+  geom_point(aes(x = pwor$aor, y = pwor$sim_q,
+             text = paste(pwor$A, pwor$B, sep=",")), shape = 1, 
+             colour = "grey20", alpha = 0.5) +
+  geom_point(aes(colour = share_2x2, text = paste(A, B, sep=",")), alpha = 0.5) +
+  scale_colour_gradient(low = "sienna1", high = "black") +
+  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
+  theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
+                                 ylim = c(min(pwor$aor), max(pwor$qor)))
+plotly::ggplotly(plt5) # 
+
+```
+
+The confidence intervals in Figure 3 are 1.95(standard error) using the approximation se = root(...). Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1); and conversely significant exclusion (Table 2).
+
+```{r}
+friends <- (pwor %>% filter((sim_q_high < ci_low.x) & (sfx == "yes"))
+            %>% select(A, B, qor, share_2x2)
+            %>% rename("log(odds ratio)" = qor) 
+            %>% rename("shared quadrats" = share_2x2))
+datatable(friends, caption = 'Plants found sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
+
+enemies <- (pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
+              %>% select(A, B, qor, share_2x2)
+              %>% rename("log(odds ratio)" = qor) 
+              %>% rename("shared quadrats" = share_2x2))
+datatable(enemies, caption = 'Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
+
+
+#             caption = 'Plants that avoid sharing a quadrat',
+#             colnames = c('log(odds ratio)' = 4, 'shared quadrats' = 5))
+# enemies <- enemies %>% formatSignif('log(odds ratio)',2)
+
+```
+

@@ -37,13 +37,7 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
   # sim_length: number of simulated trials
   # pool_size: quadrat count per assembly
 {
-  # https://en.wikipedia.org/wiki/Odds_ratio
-  # The odds ratio is a function of the cell probabilities, and conversely, 
-  # the cell probabilities can be recovered given knowledge of the odds 
-  # ratio and the marginal probabilities ...
-  # Don't really need this as we could just retain the colSums from the
-  # Odds ratio function and get the joint probability table directly
-  
+
   r <- exp(r)
   s <- sqrt((1 + (marg_x + marg_y)*(r - 1))^2 + 4*r*(1 - r)*marg_x*marg_y)
   # Calculate the joint probability (contingency) table
@@ -51,11 +45,7 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
   p10 <- marg_x - p11
   p01 <- marg_y - p11
   p00 <- 1 - marg_y - p10
-  # Check we have actually recoverd
-  # the assembly odds ratio, so the joint probability table is OK
-  # r_check <- (p00*p11)/(p01*p10)
-  # cat("check: ", r, r_check, "\n", sep = ", ")
-  
+
   # Simulate the observed assembly data
   sim <-  tibble(trials = sample(c("X1Y1", "X0Y1", "X1Y0", "X0Y0"), sim_length, 
                                  prob = c(p11, p10, p01, p00), rep=T))
