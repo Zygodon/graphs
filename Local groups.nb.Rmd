@@ -3,7 +3,7 @@ title: "Local groups"
 output: html_notebook
 ---
 
-```{r}
+```{r echo = F, warning = F, message = F}
 # Libraries
 library("RMySQL")
 library(tidyverse)
@@ -187,9 +187,9 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
 
 
 ###### END OF FUNCTIONS BLOCK ###########
-if (file.exists("contingency.csv"))
+if (file.exists("pwor_10K.csv"))
 {
-  pwor <- read.csv("contingency.csv")
+  pwor <- read.csv("pwor_10K.csv")
 } else {
   the_data <- GetTheData()
   # Restrict analysis to species with more than 20 hits
@@ -283,20 +283,42 @@ if (file.exists("contingency.csv"))
   rm(sfx)
   # Join share_2x2 for later use
   pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
-  write.csv(pwor, "contingency.csv", row.names = FALSE)
-}
+  
+  # pwor columns to hold simulation results
+  pwor$sim_q = 0.0
+  pwor$sim_a = 0.0
+  pwor$sim_q_low = 0.0
+  pwor$sim_q_high = 0.0
+
+  # Simulate OR expected if there were no local effect
+  for (i in seq_along(row.names(pwor)))
+  {
+    s <- sum(pwor[i, 10:13])
+    # assembly marginal probabilities
+    amx <- (pwor$jc1.y[i] + pwor$jc3.y[i])/s
+    amy <- (pwor$jc1.y[i] + pwor$jc2.y[i])/s
+    simulated_or <- try(QuadratORGivenAssemblyOR(pwor$aor[i], 
+                        amx, amy, sim_length = 2000)) #2000))
+    # Don't understand why as.numeric needed here.
+    pwor$sim_q[i] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
+    pwor$sim_a[i] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
+    pwor$sim_q_low[i] <- as.numeric(simulated_or[3]) #
+    pwor$sim_q_high[i] <- as.numeric(simulated_or[4])  #
+  }
+  pwor <- pwor %>% filter(!is.na(sim_q))
+  write.csv(pwor, "pwor.csv", row.names = FALSE) # NOT 10K
+} #### End of Else
 ```
 # Evidence for local interspecific associations from The River Ouse Project.
 
-As part of The River Ouse Project (University of Sussex insert link to website), we have been collecting survey data from species rich meadows since 2006. In the data used here the sampling unit is a 2m x 2m quadrat, and five samples were taken from uniform vegetation stands within a meadow.
+As part of [The River Ouse Project](http://www.sussex.ac.uk/riverouse/), we have been collecting survey data from species rich meadows since 2006. In the data used here the sampling unit is a 2m x 2m quadrat, and five samples were taken from uniform vegetation stands within a meadow.
 
-I was interested to examine the data for evidence of specific associations between plant pairs. For each possible pair of plants that were found reasonably frequently, I made presence/absence contingency tables and tested the significance of any correlation with the chi square statistic, accepting p < 0.05 as evidence for a significant association. I measured the strength of the associations using log(odds ratio) - link to Wikipedia article here - , where 0 indicates no association, positive values indicate positive association and negative values indicate exclusion (negative association). In what follows, "odds ratio" is to be understood as "log(odds ratio)", for brevity.
+I was interested to examine the data for evidence of specific associations between plant pairs. For each possible pair of plants that were found reasonably frequently, I made presence/absence contingency tables and tested the significance of any correlation with the chi square statistic, accepting p < 0.05 as evidence for a significant association. I measured the strength of the associations using log(odds ratio) - [Wikipedia reference](https://en.wikipedia.org/wiki/Odds_ratio) -, where 0 indicates no association, positive values indicate positive association and negative values indicate exclusion (negative association). In what follows, "odds ratio" is to be understood as "log(odds ratio)", for brevity.
 
-The contingency tables could be constructed with co-occurences in stands (5 quadrats) or in individual quadrats. The chance of finding two species together in a five quadrat stand is clearly greater than finding them together in a single quadrat. The regression of quadrat odds ratio on stand odds ratio (Figure 1) is ..., less than 1.0 as expected.
+The contingency tables could be constructed with co-occurences in stands (5 quadrats) or in individual quadrats. The chance of finding two species together in a five quadrat stand is clearly greater than finding them together in a single quadrat. The regression of quadrat odds ratio on stand odds ratio (Figure 1) is `r round(lm(pwor$qor ~ pwor$aor)$coefficients[2], 2)`, less than 1.0, as expected.
 
-```{r}
+```{r echo = F, warning = F, message = FALSE}
 lin_model <- y ~ x # For stat_poly_eq
-
 # Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
 # tend to be higher than quadrat OR because of increased expectation that
 # a pair of plants will be found together in the larger area.
@@ -306,9 +328,10 @@ plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
                eq.with.lhs = "italic(hat(y))~`=`~",
                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
                parse = TRUE) +         
-  geom_point(aes(colour = sfx, text = paste(A, B, sep=",")), alpha = 0.5) +
+  geom_point(aes(colour = sfx), alpha = 0.5) +
   scale_colour_manual(values = c("grey27", "sienna3")) +
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
+  labs(x = "stand odds ratio", y = "quadrats odds ratio") +
+  ggtitle("Figure 1.") +
   theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
                                  ylim = c(min(pwor$aor), max(pwor$qor)))
 plot(plt2)
@@ -318,48 +341,18 @@ The scatter of points around the regression line in Figure 1 suggested that for 
 
 It seemed worthwhile to examine whether the quadrat level associations may be stronger than would be expected by chance from the observed stand level associations.
 
-In a simulation study, I used the stand level contingency tables to sample the pairwise associations, using 2000 - 10000 draws per pair. Each sample in this simulation generates four numbers, A1B1, A1B0, A0B1, A0B0 element (0, 1) depending on the presence (1) or absence (0) of species A, B on each draw. The probabilities of generating A1B1 ... A0B0 for each species pair are derived from the joint assembly level contingency tables.
-```{r}
-# pwor columns to hold simulation results
-# expected_qor <- tibble(
-#   A = pwor$A,
-#   B = pwor$B,
-#   share_2x2 = pwor$share_2x2,
-#   obs_q = pwor$qor,
-#   obs_a = pwor$aor,
-  pwor$sim_q = 0.0
-  pwor$sim_a = 0.0
-  pwor$sim_q_low = 0.0
-  pwor$sim_q_high = 0.0
+In a simulation study, I used the stand level contingency tables to sample the pairwise associations, using 2000 - 10000 draws per pair. Each sample in this simulation generates four numbers, $A1B1, A1B0, A0B1, A0B0 \in (0, 1)$ depending on the presence (1) or absence (0) of species A, B on each draw. The probabilities of generating $A1B1 ... A0B0$ for each species pair are derived from the joint assembly level contingency tables.
 
-# Simulate OR expected if there were no local effect
-for (i in seq_along(row.names(pwor)))
-{
-  s <- sum(pwor[i, 10:13])
-  # assembly marginal probabilities
-  amx <- (pwor$jc1.y[i] + pwor$jc3.y[i])/s
-  amy <- (pwor$jc1.y[i] + pwor$jc2.y[i])/s
-  simulated_or <- try(QuadratORGivenAssemblyOR(pwor$aor[i], 
-                      amx, amy, sim_length = 2000)) #2000))
-  # Don't understand why as.numeric needed here.
-  pwor$sim_q[i] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
-  pwor$sim_a[i] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
-  pwor$sim_q_low[i] <- as.numeric(simulated_or[3]) #
-  pwor$sim_q_high[i] <- as.numeric(simulated_or[4])  #
-}
-pwor <- pwor %>% filter(!is.na(sim_q))
+For each draw, I extracted the marginal presence/absence of A, B ($A = A1B1 \cup A1B0$, etc). I divided the samples into groups of five, representing stands, and redistributed the As, Bs randomly among the five samples (representing quadrats) in each stand. In this way the stand-level associations are preserved (Figure 2a), while the simulated quadrat-level associations are just what would be expected without any local effect. As Figure 2b shows, much local association has in fact been removed by the simulation. 
 
-```
-For each draw, I extracted the marginal presence/absence of A, B (A = A1B1 OR A1B0, etc). I divided the samples into groups of five, representing stands, and redistributed the As, Bs randomly among the five samples (representing quadrats) in each stand. In this way the stand-level associations are preserved (Figure 2a), while the simulated quadrat-level associations are just what would be expected without any local effect. As Figure 2b shows, much local association has in fact been removed by the simulation. 
-
-```{r}
+```{r echo = F, warning = F, message = F}
 # Plot simulated vs observed aor : expect near unit slope
 plt3 <- ggplot(pwor, aes(x = aor, y = sim_a)) +
   geom_abline(colour = "green")+
   geom_smooth(method = lm, size = 0.5) +
   geom_point(alpha = 0.5) +
-  labs(x = "observed assembly odds ratio", y = "reconstructed assembly odds ratio") +
-  ggtitle("Figure 2a. Stand level associations retained by simulation") +
+  labs(x = "observed stand odds ratio", y = "reconstructed stand odds ratio") +
+  ggtitle("Figure 2a.") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 #plot(plt3)
 
@@ -376,13 +369,13 @@ plt4 <- ggplot(pwor, aes(x = qor, y = sim_q)) +
   geom_point(aes(text = paste(A, B, sep=",")), alpha = 0.5) +
   # scale_colour_manual(values = c("grey27", "sienna3")) +
   labs(x = "observed quadrat odds ratio)", y = "reconstructed quadrat odds ratio)") +
-  ggtitle("Figure 2b. Quadrat OR with no local effects") +
+  ggtitle("Figure 2b.") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 # plot(plt4)
 grid.arrange(plt3, plt4, ncol = 2)
 ```
 Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs assembly odds ratios shows the magnitude of local effects (Figure 3).
-```{r}
+```{r echo = F, warning = F, message = F}
 # Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
 # quadrat OR
 plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
@@ -396,7 +389,8 @@ plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
              colour = "grey20", alpha = 0.5) +
   geom_point(aes(colour = share_2x2, text = paste(A, B, sep=",")), alpha = 0.5) +
   scale_colour_gradient(low = "sienna1", high = "black") +
-  labs(x = "log(Odds Ratio), assemblies", y = "log(Odds Ratio), quadrats") +
+  labs(x = "stand odds ratio", y = "quadrat odds ratio") +
+  ggtitle("Figure 3.") +
   theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
                                  ylim = c(min(pwor$aor), max(pwor$qor)))
 plotly::ggplotly(plt5) # 
@@ -405,7 +399,7 @@ plotly::ggplotly(plt5) #
 
 The confidence intervals in Figure 3 are 1.95(standard error) using the approximation se = root(...). Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
 
-```{r}
+```{r echo = F, warning = F, message = F}
 friends <- (pwor %>% filter((sim_q_high < ci_low.x) & (sfx == "yes"))
             %>% select(A, B, qor, share_2x2)
             %>% rename("log(odds ratio)" = qor) 
@@ -421,13 +415,13 @@ enemies <- (pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
 datatable(enemies, caption = 'Table 2. Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
 ```
 Looking at Table 1, we can see that some names occur many times. The count of the associations for each species is shown in Figure 4. This suggests that there may be some kind of clustering in the data, constellations of species forming more or less discrete groups, and I look forward to exploring this possibility.
-```{r}
+```{r echo = F, warning = F, message = F}
 friends_pivot <- friends %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
 fc <- friends_pivot %>% group_by(species) %>% summarise(count = n())
 plt5 <- ggplot(fc, aes(x = reorder(species, count), y = count)) +
-  geom_bar(stat = "identity", fill = "darkgreen", colour = "white") +
+  geom_bar(stat = "identity", fill = "darkorange", colour = "white") +
   coord_flip() +
-  labs(title = "Count of species associations", x = "species", y = "count")
+  labs(title = "Figure 4.", x = "species", y = "count")
 plot(plt5)
 ```
 
