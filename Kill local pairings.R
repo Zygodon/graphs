@@ -122,7 +122,7 @@ for (i in seq_along(row.names(pwor)))
   amx <- (pwor$jc1.y[i] + pwor$jc3.y[i])/s
   amy <- (pwor$jc1.y[i] + pwor$jc2.y[i])/s
   simulated_or <- try(QuadratORGivenAssemblyOR(pwor$aor[i], 
-                      amx, amy, sim_length = 10000)) #2000))
+                      amx, amy, sim_length = 2000)) #2000))
   # Don't understand why as.numeric needed here.
   pwor$sim_q[i] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
   pwor$sim_a[i] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
