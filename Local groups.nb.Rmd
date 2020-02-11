@@ -400,25 +400,31 @@ plotly::ggplotly(plt5) #
 
 ```
 
-The confidence intervals in Figure 3 are 1.95(standard error) using the approximation se = root(...). Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1); and conversely significant exclusion (Table 2).
+The confidence intervals in Figure 3 are 1.95(standard error) using the approximation se = root(...). Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
 
 ```{r}
 friends <- (pwor %>% filter((sim_q_high < ci_low.x) & (sfx == "yes"))
             %>% select(A, B, qor, share_2x2)
             %>% rename("log(odds ratio)" = qor) 
             %>% rename("shared quadrats" = share_2x2))
-datatable(friends, caption = 'Plants found sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
-
+datatable(friends, caption = 'Table 1. Plants found sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
+```
+Conversely significant exclusions (Table 2).
+```{r}
 enemies <- (pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
               %>% select(A, B, qor, share_2x2)
               %>% rename("log(odds ratio)" = qor) 
               %>% rename("shared quadrats" = share_2x2))
-datatable(enemies, caption = 'Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
-
-
-#             caption = 'Plants that avoid sharing a quadrat',
-#             colnames = c('log(odds ratio)' = 4, 'shared quadrats' = 5))
-# enemies <- enemies %>% formatSignif('log(odds ratio)',2)
-
+datatable(enemies, caption = 'Table 2. Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
+```
+Looking at Table 1, we can see that some names occur many times. The count of the associations for each species is shown in Figure 4. This suggests that there may be some kind of clustering in the data, constellations of species forming more or less discrete groups, and I look forward to exploring this possibility.
+```{r}
+friends_pivot <- friends %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
+fc <- friends_pivot %>% group_by(species) %>% summarise(count = n())
+plt5 <- ggplot(fc, aes(x = reorder(species, count), y = count)) +
+  geom_bar(stat = "identity", fill = "darkgreen", colour = "white") +
+  coord_flip() +
+  labs(title = "Count of species associations", x = "species", y = "count")
+plot(plt5)
 ```
 
