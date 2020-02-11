@@ -187,101 +187,104 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
 
 
 ###### END OF FUNCTIONS BLOCK ###########
-
-the_data <- GetTheData()
-# Restrict analysis to species with more than 20 hits
-sp_count <- the_data %>% group_by(species_id) %>% summarise(n = n())
-sp_list <- sp_count %>% filter(n > 20)
-# the_data with reduced species count
-the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
-rm(sp_count, sp_list)
-
-# Select followed by distinct gives us just the occurrence of each species in each assembly,
-# without multiple records of its occurrence.
-# This stage was missing in the previous attempt at assembly_level odds ratio.
-assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
-
-quadrat_data <- the_data %>% select(quadrat_id, species_name)
-# In order to use the odds ratio function, we need the species pairs
-# It will be better to get the species pairs from the quadrat data: assemblies
-# may have shared species that don't share a quadrat. All species sharing a 
-# quadrat imply a shared assembly.
-edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
-          %>% rename(from = species_name.x)
-          %>% rename(to = species_name.y)
-          %>%  select(-quadrat_id)
-          %>% group_by(from, to) 
-          %>% summarise(share_2x2 = n())
-          %>% filter(from != to))
-edges <- edges %>% filter(share_2x2 > 20)
-nodes <- distinct(edges, from)
-net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
-n2 <- simplify(net, edge.attr.comb = "first")
-edges <- as_data_frame(n2, what="edges")
-rm(nodes, net, n2)
-
-# For each species pair, get the assembly odds ratio.
-assembly_pwor <- tibble(
-  A = edges$from,
-  B = edges$to,
-  jc1 = 0,
-  jc2 = 0,
-  jc3 = 0,
-  jc4 = 0,
-  aor = 0,
-  ci_low = 0,
-  ci_high = 0)
-
-for (i in seq_along(row.names(edges)))
+if (file.exists("contingency.csv"))
 {
-  s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
-  assembly_pwor[i, 3:6] <- s[1:4]
-  assembly_pwor[i, 7:9] <- OddsRatio(s)
-} # Don't remove NAs at this stage
-
-
-# Now take the same set of species pairs and make the quadrats odds ratios
-quadrat_pwor <- tibble(
-  A = edges$from,
-  B = edges$to,
-  jc1 = 0,
-  jc2 = 0,
-  jc3 = 0,
-  jc4 = 0,
-  qor = 0,
-  ci_low = 0,
-  ci_high = 0)
-
-for (i in seq_along(row.names(edges)))
-{
-  s <- JointContingency(quadrat_data, edges$from[i], edges$to[i])
-  quadrat_pwor[i, 3:6] <- s[1:4]
-  quadrat_pwor[i, 7:9] <- OddsRatio(s)
-} # Don't remove NAs at this stage
-
-# quadrat_pwor <- bind_cols(edges, quadrat_pwor)
-pwor <- (left_join(quadrat_pwor, assembly_pwor, by = c("A", "B"))
-        %>% filter(!is.na(qor))
-        %>% filter(!is.infinite(qor))
-        %>% filter(!is.na(aor))
-        %>% filter(!is.infinite(aor)))
-rm(assembly_pwor, quadrat_pwor)
-
-# Add Chisquare test result (p < 0.05)
-sfx <- tibble( sfx = pwor$A) # Arbitrary character string
-for (i in seq_along(row.names(pwor)))
-{
-   x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
-   sf <- SfChi(x) #sfx: significance Chisquare.test: p < 0.05
-   sfx$sfx[i] <- sf
-   # cat(i, sf, "\n")
+  pwor <- read.csv("contingency.csv")
+} else {
+  the_data <- GetTheData()
+  # Restrict analysis to species with more than 20 hits
+  sp_count <- the_data %>% group_by(species_id) %>% summarise(n = n())
+  sp_list <- sp_count %>% filter(n > 20)
+  # the_data with reduced species count
+  the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
+  rm(sp_count, sp_list)
+  
+  # Select followed by distinct gives us just the occurrence of each species in each assembly,
+  # without multiple records of its occurrence.
+  # This stage was missing in the previous attempt at assembly_level odds ratio.
+  assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
+  
+  quadrat_data <- the_data %>% select(quadrat_id, species_name)
+  # In order to use the odds ratio function, we need the species pairs
+  # It will be better to get the species pairs from the quadrat data: assemblies
+  # may have shared species that don't share a quadrat. All species sharing a 
+  # quadrat imply a shared assembly.
+  edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
+            %>% rename(from = species_name.x)
+            %>% rename(to = species_name.y)
+            %>%  select(-quadrat_id)
+            %>% group_by(from, to) 
+            %>% summarise(share_2x2 = n())
+            %>% filter(from != to))
+  edges <- edges %>% filter(share_2x2 > 20)
+  nodes <- distinct(edges, from)
+  net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
+  n2 <- simplify(net, edge.attr.comb = "first")
+  edges <- as_data_frame(n2, what="edges")
+  rm(nodes, net, n2)
+  
+  # For each species pair, get the assembly odds ratio.
+  assembly_pwor <- tibble(
+    A = edges$from,
+    B = edges$to,
+    jc1 = 0,
+    jc2 = 0,
+    jc3 = 0,
+    jc4 = 0,
+    aor = 0,
+    ci_low = 0,
+    ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+    assembly_pwor[i, 3:6] <- s[1:4]
+    assembly_pwor[i, 7:9] <- OddsRatio(s)
+  } # Don't remove NAs at this stage
+  
+  
+  # Now take the same set of species pairs and make the quadrats odds ratios
+  quadrat_pwor <- tibble(
+    A = edges$from,
+    B = edges$to,
+    jc1 = 0,
+    jc2 = 0,
+    jc3 = 0,
+    jc4 = 0,
+    qor = 0,
+    ci_low = 0,
+    ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(quadrat_data, edges$from[i], edges$to[i])
+    quadrat_pwor[i, 3:6] <- s[1:4]
+    quadrat_pwor[i, 7:9] <- OddsRatio(s)
+  } # Don't remove NAs at this stage
+  
+  # quadrat_pwor <- bind_cols(edges, quadrat_pwor)
+  pwor <- (left_join(quadrat_pwor, assembly_pwor, by = c("A", "B"))
+          %>% filter(!is.na(qor))
+          %>% filter(!is.infinite(qor))
+          %>% filter(!is.na(aor))
+          %>% filter(!is.infinite(aor)))
+  rm(assembly_pwor, quadrat_pwor)
+  
+  # Add Chisquare test result (p < 0.05)
+  sfx <- tibble( sfx = pwor$A) # Arbitrary character string
+  for (i in seq_along(row.names(pwor)))
+  {
+     x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
+     sf <- SfChi(x) #sfx: significance Chisquare.test: p < 0.05
+     sfx$sfx[i] <- sf
+     # cat(i, sf, "\n")
+  }
+  pwor$sfx <- sfx$sfx
+  rm(sfx)
+  # Join share_2x2 for later use
+  pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
+  write.csv(pwor, "contingency.csv", row.names = FALSE)
 }
-pwor$sfx <- sfx$sfx
-rm(sfx)
-
-# Join /share_2x2 for later use
-pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
-# write.csv(pwor, "contingency.csv", row.names = FALSE)
 ```
 # Evidence for local interspecific associations from The River Ouse Project.
 
