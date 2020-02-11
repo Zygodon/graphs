@@ -109,17 +109,10 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
 
 pwor <- read.csv("contingency.csv", header = TRUE, sep = ",")
 
-# pwor columns to hold simulation results
-# expected_qor <- tibble(
-#   A = pwor$A,
-#   B = pwor$B,
-#   share_2x2 = pwor$share_2x2,
-#   obs_q = pwor$qor,
-#   obs_a = pwor$aor,
-  pwor$sim_q = 0.0
-  pwor$sim_a = 0.0
-  pwor$sim_q_low = 0.0
-  pwor$sim_q_high = 0.0
+pwor$sim_q = 0.0
+pwor$sim_a = 0.0
+pwor$sim_q_low = 0.0
+pwor$sim_q_high = 0.0
 
 # Simulate OR expected if there were no local effect
 for (i in seq_along(row.names(pwor)))
@@ -129,12 +122,8 @@ for (i in seq_along(row.names(pwor)))
   amx <- (pwor$jc1.y[i] + pwor$jc3.y[i])/s
   amy <- (pwor$jc1.y[i] + pwor$jc2.y[i])/s
   simulated_or <- try(QuadratORGivenAssemblyOR(pwor$aor[i], 
-                      amx, amy, sim_length = 2000)) #2000))
+                      amx, amy, sim_length = 10000)) #2000))
   # Don't understand why as.numeric needed here.
-  # expected_qor[i,6] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
-  # expected_qor[i,7] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
-  # expected_qor[i,8] <- as.numeric(simulated_or[3]) #
-  # expected_qor[i,9] <- as.numeric(simulated_or[4])  #
   pwor$sim_q[i] <- as.numeric(simulated_or[1]) # Destroyed quadrat ORs
   pwor$sim_a[i] <- as.numeric(simulated_or[2]) # Reconstructed assembly ORs
   pwor$sim_q_low[i] <- as.numeric(simulated_or[3]) #
@@ -142,6 +131,7 @@ for (i in seq_along(row.names(pwor)))
   cat("pair ", i, "\n")
 }
 pwor <- pwor %>% filter(!is.na(sim_q))
+write.csv(pwor, "pwor.csv", row.names = FALSE)
 
 # Plot simulated vs observed qor : expect near zero slope if
 # local influence in strength of association was important.
@@ -190,5 +180,4 @@ enemies <- datatable(pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
             colnames = c('log(odds ratio)' = 4, 'shared quadrats' = 5))
 enemies <- enemies %>% formatSignif('log(odds ratio)',2)
 
-# write.csv(expected_qor, "predicted assembly_OR with no quadrat_OR.csv", row.names = FALSE)
 
