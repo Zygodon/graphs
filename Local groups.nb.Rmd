@@ -402,7 +402,7 @@ plotly::ggplotly(plt5)
 The confidence intervals in Figure 3 are 1.95(standard error) using the approximation 
 
 ${{{\rm {SE}}}={\sqrt  {{\dfrac  {1}{n_{{11}}}}+{\dfrac  {1}{n_{{10}}}}+{\dfrac  {1}{n_{{01}}}}+{\dfrac  {1}{n_{{00}}}}}}}$
-On this basis, more than 100 plant pairs were significanlty more strogky associated at the quadrat-level than would be expected from the observed stand-level association.
+On this basis, more than 100 plant pairs were significantly more strogky associated at the quadrat-level than would be expected from the observed stand-level association.
 
 ## Which species pairs exhibit local association?
 Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
