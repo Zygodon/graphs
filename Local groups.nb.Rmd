@@ -1,5 +1,5 @@
 ---
-title: "Local groups"
+title: "Local interspecific associations"
 output: html_notebook
 ---
 
@@ -309,12 +309,13 @@ if (file.exists("pwor_10K.csv"))
   write.csv(pwor, "pwor.csv", row.names = FALSE) # NOT 10K
 } #### End of Else
 ```
-# Evidence for local interspecific associations from The River Ouse Project.
+# Evidence for local interspecific plant associations in flower-rich grasslands.
 
 As part of [The River Ouse Project](http://www.sussex.ac.uk/riverouse/), we have been collecting survey data from species rich meadows since 2006. In the data used here the sampling unit is a 2m x 2m quadrat, and five samples were taken from uniform vegetation stands within a meadow.
 
 I was interested to examine the data for evidence of specific associations between plant pairs. For each possible pair of plants that were found reasonably frequently, I made presence/absence contingency tables and tested the significance of any correlation with the chi square statistic, accepting p < 0.05 as evidence for a significant association. I measured the strength of the associations using log(odds ratio) - [Wikipedia reference](https://en.wikipedia.org/wiki/Odds_ratio) -, where 0 indicates no association, positive values indicate positive association and negative values indicate exclusion (negative association). In what follows, "odds ratio" is to be understood as "log(odds ratio)", for brevity.
 
+## Stand-  and quadrat-level contingencies.
 The contingency tables could be constructed with co-occurences in stands (5 quadrats) or in individual quadrats. The chance of finding two species together in a five quadrat stand is clearly greater than finding them together in a single quadrat. The regression of quadrat odds ratio on stand odds ratio (Figure 1) is `r round(lm(pwor$qor ~ pwor$aor)$coefficients[2], 2)`, less than 1.0, as expected.
 
 ```{r echo = F, warning = F, message = FALSE}
@@ -329,7 +330,7 @@ plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
                parse = TRUE) +         
   geom_point(aes(colour = sfx), alpha = 0.5) +
-  scale_colour_manual(values = c("grey27", "sienna3")) +
+  scale_colour_manual(values = c("grey27", "sienna3"), name = "Chi sq: p < 0.05") +
   labs(x = "stand odds ratio", y = "quadrats odds ratio") +
   ggtitle("Figure 1.") +
   theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
@@ -337,11 +338,12 @@ plt2 <- ggplot(pwor, aes(x=aor, y=qor)) +
 plot(plt2)
 ```
 
-The scatter of points around the regression line in Figure 1 suggested that for some species pairs there might be a greater than expected chance of finding them in the same quadrat, while for othere there might be less, perhaps indicating some short range (on the scale of 2m x 2m) interactions. Uniform stands are never truly uniform but have some level of granularity within which variations in abiotic or biotic environmental factors play a part in determining which species are locally present.
+The scatter of points around the regression line in Figure 1 suggested that for some species pairs there might be a greater than expected chance of finding them in the same quadrat, while for othere there might be less, perhaps indicating some short range (on the scale of 2m x 2m) interactions. 
 
-It seemed worthwhile to examine whether the quadrat level associations may be stronger than would be expected by chance from the observed stand level associations.
+## Are the quadrat-level associations stronger than might be expected?
+Uniform stands are never truly uniform but have some level of granularity within which variations in abiotic or biotic environmental factors play a part in determining which species are locally present. It seemed worthwhile to examine whether the quadrat level associations may be stronger than would be expected by chance from the observed stand level associations.
 
-In a simulation study, I used the stand level contingency tables to sample the pairwise associations, using 2000 - 10000 draws per pair. Each sample in this simulation generates four numbers, $A1B1, A1B0, A0B1, A0B0 \in (0, 1)$ depending on the presence (1) or absence (0) of species A, B on each draw. The probabilities of generating $A1B1 ... A0B0$ for each species pair are derived from the joint assembly level contingency tables.
+In a simulation study, I used the stand level contingency tables to sample the pairwise associations, using 10000 draws per pair. Each sample in this simulation generates four numbers, $A1B1, A1B0, A0B1, A0B0 \in (0, 1)$ depending on the presence (1) or absence (0) of species A, B on each draw. The probabilities of generating $A1B1 ... A0B0$ on each draw for are derived from the joint stand level contingency tables.
 
 For each draw, I extracted the marginal presence/absence of A, B ($A = A1B1 \cup A1B0$, etc). I divided the samples into groups of five, representing stands, and redistributed the As, Bs randomly among the five samples (representing quadrats) in each stand. In this way the stand-level associations are preserved (Figure 2a), while the simulated quadrat-level associations are just what would be expected without any local effect. As Figure 2b shows, much local association has in fact been removed by the simulation. 
 
@@ -374,7 +376,7 @@ plt4 <- ggplot(pwor, aes(x = qor, y = sim_q)) +
 # plot(plt4)
 grid.arrange(plt3, plt4, ncol = 2)
 ```
-Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs assembly odds ratios shows the magnitude of local effects (Figure 3).
+Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs stand odds ratios shows the magnitude of local effects (Figure 3).
 ```{r echo = F, warning = F, message = F}
 # Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
 # quadrat OR
@@ -397,7 +399,13 @@ plotly::ggplotly(plt5) #
 
 ```
 
-The confidence intervals in Figure 3 are 1.95(standard error) using the approximation se = root(...). Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
+The confidence intervals in Figure 3 are 1.95(standard error) using the approximation 
+
+${{{\rm {SE}}}={\sqrt  {{\dfrac  {1}{n_{{11}}}}+{\dfrac  {1}{n_{{10}}}}+{\dfrac  {1}{n_{{01}}}}+{\dfrac  {1}{n_{{00}}}}}}}$
+On this basis, more than 100 plant pairs were significanlty more strogky associated at the quadrat-level than would be expected from the observed stand-level association.
+
+## Which species pairs exhibit local association?
+Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
 
 ```{r echo = F, warning = F, message = F}
 friends <- (pwor %>% filter((sim_q_high < ci_low.x) & (sfx == "yes"))
@@ -406,22 +414,36 @@ friends <- (pwor %>% filter((sim_q_high < ci_low.x) & (sfx == "yes"))
             %>% rename("shared quadrats" = share_2x2))
 datatable(friends, caption = 'Table 1. Plants found sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
 ```
+
+## Which species pairs exhibit local exclusion?
 Conversely significant exclusions (Table 2).
-```{r}
+```{r echo = F, warning = F, message = F}
 enemies <- (pwor %>% filter((sim_q_low > ci_high.x) & (sfx == "yes"))
               %>% select(A, B, qor, share_2x2)
               %>% rename("log(odds ratio)" = qor) 
               %>% rename("shared quadrats" = share_2x2))
 datatable(enemies, caption = 'Table 2. Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
 ```
+On the same basis, about 24 plant pairs showed evidence of local exclusion.
+
+## Would you expect this?
+Frankly, I am very surprised by these results. I had not expected the local effects to be so strong, and, given there were some, I had expected local exclusion to be more common than association. I have reviewed the arguments, and the code (listed at the head of this document, though most of it not actually run in real time as the simulation is lengthy; so I have just arranged for the pre-computed results to be loaded from a file). 
+
+One possible objection that I find is that the confidence intervals for the simulated, local association-free quadrat odds ratios are computed on the assumption that we have a population sample, whereas in reality they are based upon the sample estimates from the stands. Perhaps, then, they are optimistically narrow; widening them would result in fewer significant pairs. I would welcome discussion of other objections to these findings.
+
+## Could locally associated pairs be organised as cluster networks?
 Looking at Table 1, we can see that some names occur many times. The count of the associations for each species is shown in Figure 4. This suggests that there may be some kind of clustering in the data, constellations of species forming more or less discrete groups, and I look forward to exploring this possibility.
 ```{r echo = F, warning = F, message = F}
 friends_pivot <- friends %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
 fc <- friends_pivot %>% group_by(species) %>% summarise(count = n())
 plt5 <- ggplot(fc, aes(x = reorder(species, count), y = count)) +
-  geom_bar(stat = "identity", fill = "darkorange", colour = "white") +
+  geom_bar(stat = "identity", fill = "#d01c8b", colour = "white") +
   coord_flip() +
+  theme(axis.text.y = element_text(size = 5)) +
   labs(title = "Figure 4.", x = "species", y = "count")
 plot(plt5)
 ```
+## How could the local associations arise?
+Please look at the pairs in Table 1 carefully, you may find some strange bedfellows! (similarly for Table 2). I would certainly welcome comment from more ecologically informed colleagues about the possible ecological significance of any of the pairings.Is it a surprise to find the mosses present in Table 1?
 
+What factors could be driving the local associations? I mentioned local variations in abiotic and biotic environmental factors and it seems quite likely that local changes in wetness, soil type, aspect, slope etc could be important, but I think we must also entertain the possibility of more direct plant-plant relationships perhaps invloving shared mycorrhiza. The scale of 2m x 2m is quite large, perhaps, for observing direct interactions, but would it be worthwhile earmarking particular associations in Table 2 to look out for in the 2020 surveys for at least anecdotal evidence for close partnerships?
