@@ -107,7 +107,7 @@ QuadratORGivenAssemblyOR <- function(r, marg_x, marg_y, sim_length = 10000, pool
 ######
 # 
 
-pwor <- read.csv("contingency.csv", header = TRUE, sep = ",")
+#pwor <- read.csv("contingency.csv", header = TRUE, sep = ",")
 
 pwor$sim_q = 0.0
 pwor$sim_a = 0.0
