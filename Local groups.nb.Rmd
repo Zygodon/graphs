@@ -1,6 +1,8 @@
 ---
 title: "Local interspecific associations"
 output: html_notebook
+fig.width : 6
+fig.asp : 0.618
 ---
 
 ```{r echo = F, warning = F, message = F}
@@ -347,7 +349,7 @@ In a simulation study, I used the stand level contingency tables to sample the p
 
 For each draw, I extracted the marginal presence/absence of A, B ($A = A1B1 \cup A1B0$, etc). I divided the samples into groups of five, representing stands, and redistributed the As, Bs randomly among the five samples (representing quadrats) in each stand. In this way the stand-level associations are preserved (Figure 2a), while the simulated quadrat-level associations are just what would be expected without any local effect. As Figure 2b shows, much local association has in fact been removed by the simulation. 
 
-```{r echo = F, warning = F, message = F}
+```{r echo = F, warning = F, message = F, out.width = "50%"}
 # Plot simulated vs observed aor : expect near unit slope
 plt3 <- ggplot(pwor, aes(x = aor, y = sim_a)) +
   geom_abline(colour = "green")+
@@ -377,7 +379,7 @@ plt4 <- ggplot(pwor, aes(x = qor, y = sim_q)) +
 grid.arrange(plt3, plt4, ncol = 2)
 ```
 Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs stand odds ratios shows the magnitude of local effects (Figure 3).
-```{r echo = F, warning = F, message = F}
+```{r echo = F, warning = F, message = F, fig.fullwidth = TRUE}
 # Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
 # quadrat OR
 plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
