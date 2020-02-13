@@ -379,7 +379,7 @@ plt4 <- ggplot(pwor, aes(x = qor, y = sim_q)) +
 grid.arrange(plt3, plt4, ncol = 2)
 ```
 Superimposing the simulated quadrat-level odds ratios onto the graph of observed quadrat odds ratios vs stand odds ratios shows the magnitude of local effects (Figure 3).
-```{r echo = F, warning = F, message = F, fig.fullwidth = TRUE}
+```{r echo = F, warning = F, message = F, out.width = "70%", fig.align = "center"}
 # Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
 # quadrat OR
 plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
@@ -399,8 +399,8 @@ plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
   ggtitle("Figure 3.") +
   theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
                                  ylim = c(min(pwor$aor), max(pwor$qor)))
-plotly::ggplotly(plt5) 
-
+plotly::ggplotly(plt5) %>% layout(autosize = F, width = 800, height = 500)
+# plot(plt5)
 ```
 
 The confidence intervals in Figure 3 are 1.95(standard error) using the approximation
