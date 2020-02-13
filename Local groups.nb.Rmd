@@ -387,7 +387,7 @@ plt5 <- ggplot(pwor, aes(x=aor, y=qor)) +
   geom_errorbar(aes(ymin = ci_low.x, ymax = ci_high.x), 
                 size = 0.1, width = 0.1, colour = "green", alpha = 0.5) +
   geom_errorbar(aes(ymin = sim_q_low, ymax = sim_q_high), 
-                size = 0.1, width = 0.1, colour = "black", alpha = 0.5) +
+                size = 0.1, width = 0.1, colour = "grey20", alpha = 0.5) +
   
   geom_point(aes(x = pwor$aor, y = pwor$sim_q, text = paste(pwor$A, pwor$B, sep=","), colour = "simulated"), alpha = 0.5) +
   
@@ -407,7 +407,7 @@ The confidence intervals in Figure 3 are 1.95(standard error) using the approxim
 
 $SE = \sqrt{\frac{1}{n_{11}}+\frac{1}{n_{10}}+\frac{1}{n_{01}}+\frac{1}{n_{00}}}$
 
-On this basis, more than 100 plant pairs were significantly more strogky associated at the quadrat-level than would be expected from the observed stand-level association.
+On this basis, more than 100 plant pairs were significantly more strongly associated at the quadrat-level than would be expected from the observed stand-level association.
 
 ## Which species pairs exhibit local association?
 Pairs for which the lower limit of the observed confidence interval is above the upper limit of the simulated confidence interval are taken as showing a significant local association (Table 1). 
