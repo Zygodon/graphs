@@ -1,0 +1,320 @@
+---
+title: "Local associations: second null model"
+output: html_notebook
+---
+
+This notebook follows on from Local groups.nb.Rmd, in which I attempted to adduce evidence for local pairwise co-occurence between plant taxa in the River Ouse Project meadows database. I am greatly indebted to Aaron Ellison for drawing my attntion to the general topic of null models, and in particular to Nick Gotelli & Gary Graves’ Null Models in Ecology:  [link](https://www.uvm.edu/~ngotelli/nullmodelspage.html). The epilogue to that book contains this advice:
+
+*We suggest that ecologists ask themselves the following questions before
+submitting the results of a null model study for publication:  
+
+1. Were the species data (measurements, geographic distributions,
+habitat, etc.) of high quality and derived from personal field
+work, specimens, or original literature sources?
+
+2. Were source pools constructed with a standardized methodology,
+taking into account the spatial distribution of habitats and
+resources?  
+
+3. Was the null model used appropriate for the question at hand,
+and was it thoroughly described in the methods so that others
+could use it?  
+
+4. Was the computer implementation of the null model checked for
+programming errors and was it tested with idealized data sets?  
+
+5. Were the ceteris paribus assumptions defended and discussed?  
+
+6. Will source pool and island species data be published or deposlted in a databank for public access?*  
+
+Here, I'm concentrating on item 3 because I had'nt thought hard enough about the null model and now think it was probably inadequate. What follows is an attempt at a better null  model which I am pretty sure will vastly reduce, and possibly eliminate entirely, all my previously supposed evidence for local pairwise association.
+
+My previous model successfully preserved stand-level associations while randomising out any possible local associations within the 5 quadrats of a stand. But it did that without preserving the species composition of a stand. The real data were compared with an entirely simulated set composed of abstract "stands" constructed purely from the data-wide marginal probabilities and odds-ratio of each species pair. In effect, I was asking "if this pair occurred in a stand with frequencies governed by their data-wide contingency table, what would be the expected quadrat odds ratio given no extra local association?" This approach treats all stands as equivalent, which is not realistic as we know that several different kinds of mesotrophic grassland were included in the survey, and the result is not directly comparable with the original data.
+
+The approach to be attempted here is to modify the original data set by randomising the assignment of a stand's species to the quadrats, thus destroying any local associations that might be present while retaining both the stand-level association (odds ratio for each pair) and the species composition of the stand. 
+
+The following code loads libraries, functions, gets the stand- and quadrat- odds ratios, and plots quadrat-odds ratios vs stand-odds ratios for each species pair.
+```{r echo = F, warning = F, message = F}
+# Libraries
+library("RMySQL")
+library(tidyverse)
+library(networkD3)
+library(igraph)
+library(plotly)
+library(ggpmisc)
+library(DT)
+library(gridExtra)
+
+# Functions
+dbDisconnectAll <- function(){
+  ile <- length(dbListConnections(MySQL())  )
+  lapply( dbListConnections(MySQL()), function(x) dbDisconnect(x) )
+  cat(sprintf("%s connection(s) closed.\n", ile))
+}
+
+# General SQL query
+query <- function(q)
+{
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+# Load the database
+GetTheData <-  function()
+{
+  # GET DATA FROM DB
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  
+  
+  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, quadrat_size, visit_date, records_id, species.species_id, 
+    species.species_name from assemblies
+      join quadrats on quadrats.assembly_id = assemblies_id
+      join visit_dates on quadrats.vd_id = visit_dates.vds_id
+      join records on records.quadrat_id = quadrats_id
+      join species on species.species_id = records.species_id
+      # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
+      # exclude some odd assemblies with no assigned community
+    where quadrat_count = 5 and species.species_id != 4 and community is not null
+    and quadrat_size = "2x2";') 
+  # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
+  # the team have not decided
+  # on a sub-group.
+  
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, species_name
+{
+  d <- d %>% rename("id" = 1)
+  A <- A[1]
+  B <- B[1]
+  As <- d %>% filter(species_name == A)
+  Bs <- d %>% filter(species_name == B)
+  j1 <- full_join(As, Bs, by = "id")
+  # Get all the assemblies/quadrats, including ones with neither A nor B
+  q <- d %>% distinct(id) 
+  j2 <- (left_join(q, j1, by = "id") 
+         # NOTE: column length q >= column length j1
+         %>% mutate(X1Y1 = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(X1Y0 = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(X0Y1 = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(X0Y0 = is.na(species_name.x) & is.na(species_name.y)))
+  s <- colSums(j2[,4:7])
+  return(s)
+}
+
+OddsRatio <-  function(s) # Joint contingency (colSums)
+{
+  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
+  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+  o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
+  ci_low <- o_r - 1.96*se
+  ci_high <- o_r + 1.96*se
+  retval <- c(o_r, ci_low, ci_high)
+  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
+  return(retval)
+}
+
+SfChi <-  function(jc)
+{
+  x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
+  ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
+}
+RandomAssignments <- function(d, assembly)
+{
+  assigned <- d %>% filter(assembly_id == assembly) %>% select(assembly_id, quadrat_id, species_name)
+  assigned <- assigned %>% mutate(new_q_id = 0)
+  q <- d %>% filter(assembly_id == assembly) %>% distinct(quadrat_id) %>% select(quadrat_id)
+  for (i in seq_along(row.names(assigned)))
+  {
+    k <- sample(q$quadrat_id,1)
+    assigned$new_q_id[i] <- k
+  }
+  return(assigned)
+}
+ #### END FUNCTIONS
+
+  the_data <- GetTheData()
+  # Restrict analysis to species with more than 20 hits
+  sp_count <- the_data %>% group_by(species_id) %>% summarise(n = n())
+  sp_list <- sp_count %>% filter(n > 20)
+  # the_data with reduced species count
+  the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
+  # rm(sp_count, sp_list)
+
+```
+  
+We have `r length(sp_list$n)` species, `r length(sp_list$n)*(length(sp_list$n)-1)/2` pairs.
+```{r echo = F, warning = F, message = F}
+  
+  # Select followed by distinct gives us just the occurrence of each species in each assembly,
+  # without multiple records of its occurrence.
+  # This stage was missing in the previous attempt at assembly_level odds ratio.
+  assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
+  
+  quadrat_data <- the_data %>% select(quadrat_id, species_name)
+  # In order to use the odds ratio function, we need the species pairs
+  # It will be better to get the species pairs from the quadrat data: assemblies
+  # may have shared species that don't share a quadrat. All species sharing a 
+  # quadrat imply a shared assembly.
+  edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
+            %>% rename(from = species_name.x)
+            %>% rename(to = species_name.y)
+            %>%  select(-quadrat_id)
+            %>% group_by(from, to) 
+            %>% summarise(share_2x2 = n())
+            %>% filter(from != to))
+  edges <- edges %>% filter(share_2x2 > 20)
+  nodes <- distinct(edges, from)
+  net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
+  n2 <- simplify(net, edge.attr.comb = "first")
+  edges <- as_data_frame(n2, what="edges")
+  rm(net, n2)
+```
+Restricting the analysis to pairs with more than 20 co-occurences reduces the number of pairs to `r length(edges$from)`.
+```{r echo = F, warning = F, message = F}
+  
+  # For each species pair, get the assembly odds ratio.
+  assembly_pwor <- tibble(
+    A = edges$from,
+    B = edges$to,
+    jc1 = 0,
+    jc2 = 0,
+    jc3 = 0,
+    jc4 = 0,
+    aor = 0,
+    ci_low = 0,
+    ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+    assembly_pwor[i, 3:6] <- s[1:4]
+    assembly_pwor[i, 7:9] <- OddsRatio(s)
+  } # Don't remove NAs at this stage
+  
+  
+  # Now take the same set of species pairs and make the quadrats odds ratios
+  quadrat_pwor <- tibble(
+    A = edges$from,
+    B = edges$to,
+    jc1 = 0,
+    jc2 = 0,
+    jc3 = 0,
+    jc4 = 0,
+    qor = 0,
+    ci_low = 0,
+    ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(quadrat_data, edges$from[i], edges$to[i])
+    quadrat_pwor[i, 3:6] <- s[1:4]
+    quadrat_pwor[i, 7:9] <- OddsRatio(s)
+  } # Don't remove NAs at this stage
+  
+  # quadrat_pwor <- bind_cols(edges, quadrat_pwor)
+  pwor <- (left_join(quadrat_pwor, assembly_pwor, by = c("A", "B"))
+          %>% filter(!is.na(qor))
+          %>% filter(!is.infinite(qor))
+          %>% filter(!is.na(aor))
+          %>% filter(!is.infinite(aor)))
+  rm(assembly_pwor, quadrat_pwor)
+  
+  # Add Chisquare test result (p < 0.05)
+  sfx <- tibble( sfx = pwor$A) # Arbitrary character string
+  for (i in seq_along(row.names(pwor)))
+  {
+     x <- matrix(unlist(pwor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
+     sf <- SfChi(x) #sfx: significance Chisquare.test: p < 0.05
+     sfx$sfx[i] <- sf
+     # cat(i, sf, "\n")
+  }
+  pwor$sfx <- sfx$sfx
+  rm(sfx)
+  # Join share_2x2 for later use
+  pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
+
+  lin_model <- y ~ x # For stat_poly_eq
+# Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
+# tend to be higher than quadrat OR because of increased expectation that
+# a pair of plants will be found together in the larger area.
+plt1 <- ggplot(pwor, aes(x=aor, y=qor)) +
+  geom_smooth(method = lm) + 
+  stat_poly_eq(formula = lin_model,
+               eq.with.lhs = "italic(hat(y))~`=`~",
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE) +         
+  geom_point(aes(colour = sfx), alpha = 0.5) +
+  scale_colour_manual(values = c("grey27", "sienna3"), name = "Chi sq: p < 0.05") +
+  labs(x = "stand odds ratio", y = "quadrats odds ratio") +
+  ggtitle("Figure 1.") +
+  theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
+                                 ylim = c(min(pwor$aor), max(pwor$qor)))
+plot(plt1)
+
+```
+So now we're set up to make the modified data set, d2.
+```{r echo = F, warning = F, message = F}
+# Get the list of assemblies, a
+a <- the_data %>% distinct(assembly_id) %>% select(assembly_id)
+# Make a tibble for the randomised data
+d2 <- tibble()
+# Randomise species assignments to quadrats in d2
+for (i in seq_along(row.names(a)))
+{
+  r <- RandomAssignments(the_data, a$assembly_id[i])
+  d2 <- bind_rows(r, d2)
+}
+
+```
+We want to repeat the quadrat level analysis on d2, and eventually to keep the same set of species pairs that were used to make Figure 1.
+```{r echo = F, warning = F, message = F}
+random_q_data <- d2 %>% select(quadrat_id, species_name)
+
+random_q_pwor <- tibble(
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  qor = 0,
+  ci_low = 0,
+  ci_high = 0)
+
+for (i in seq_along(row.names(edges)))
+{
+  s <- JointContingency(random_q_data, edges$from[i], edges$to[i])
+  random_q_pwor[i, 3:6] <- s[1:4]
+  random_q_pwor[i, 7:9] <- OddsRatio(s)
+} # Don't remove NAs at this stage
+
+test_set <- left_join(pwor, random_q_pwor, by = c("A", "B"))
+test_set <- test_set %>% select(aor, qor = qor.x, ci_low = ci_low.x, ci_high = ci_high.x, rqor = qor.y, rci_low = ci_low, rci_high = ci_high)
+
+plt2 <- ggplot(test_set, aes(x = qor, y = rqor)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "observed quadrat odds ratio)", y = "reconstructed quadrat odds ratio)") +
+  ggtitle("Figure 2.") +
+  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
+plot(plt2)
+
+```
+And we can see that the elaborate randomisation has had no effect whatsoever on the quadrat odds ratio.
