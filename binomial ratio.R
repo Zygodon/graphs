@@ -7,7 +7,6 @@ Rho <- function(sq, sa)
   return(pp/p)
 }
 
-
 tbl_rho <- tibble(A = pwor$A, B = pwor$B, rho = 0.0)
 for (i in seq_along(row.names(pwor)))
 {
@@ -15,11 +14,14 @@ for (i in seq_along(row.names(pwor)))
   sa <- pwor[i, 10:13]
   tbl_rho[i, 3] <- Rho(sq, sa)
 }
-
+# NOTE use of scale to scale to 0 mean, unit SD
 tbl_rho <- mutate(tbl_rho, sc_rho = scale(rho))
 a <- ggplot(tbl_rho, aes(sc_rho)) +
   geom_histogram(binwidth = 0.5)
 plot(a)
+
+datatable(friends, caption = 'Table 1. Plants that prefer sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
+
 
 friends <- tbl_rho %>%  filter(sc_rho > 1.95) %>% select(-sc_rho)
 datatable(friends, caption = 'Plants that prefer sharing a quadrat') %>%  formatRound('rho',2)
