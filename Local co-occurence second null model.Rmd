@@ -286,8 +286,7 @@ for (i in seq_along(row.names(a)))
 ```
 We want to repeat the quadrat level analysis on d2, and eventually to keep the same set of species pairs that were used to make Figure 1.
 ```{r echo = F, warning = F, message = F}
-random_q_data <- d2 %>% select(quadrat_id, species_name)
-
+random_q_data <- d2 %>% select(new_q_id, species_name)
 random_q_pwor <- tibble(
   A = edges$from,
   B = edges$to,
@@ -307,14 +306,63 @@ for (i in seq_along(row.names(edges)))
 } # Don't remove NAs at this stage
 
 test_set <- left_join(pwor, random_q_pwor, by = c("A", "B"))
-test_set <- test_set %>% select(aor, qor = qor.x, ci_low = ci_low.x, ci_high = ci_high.x, rqor = qor.y, rci_low = ci_low, rci_high = ci_high)
+test_set <- test_set %>% select(A, B, aor, qor = qor.x, ci_low = ci_low.x, ci_high = ci_high.x, rqor = qor.y, rci_low = ci_low, rci_high = ci_high, share_2x2)
 
 plt2 <- ggplot(test_set, aes(x = qor, y = rqor)) +
+  geom_abline(colour = "green")+
+  geom_smooth(method = lm, size = 0.5) +
+  stat_poly_eq(formula = lin_model,
+               eq.with.lhs = "italic(hat(y))~`=`~",
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               parse = TRUE) +         
   geom_point(alpha = 0.5) +
-  labs(x = "observed quadrat odds ratio)", y = "reconstructed quadrat odds ratio)") +
-  ggtitle("Figure 2.") +
+  labs(x = "observed odds ratio", y = "locally randomised odds ratio)") +
+  ggtitle("Figure 2. Quadrat odds ratios: null model (ordinate) vs observed (abscissa)") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
 plot(plt2)
 
 ```
-And we can see that the elaborate randomisation has had no effect whatsoever on the quadrat odds ratio.
+Randomising the assignment of species to quadrats within stands has evidently reduced the quadrat odds ratios. The slope of the regression line in Figure 2, 0.671, is significantly less than 1.0 (t = 21 with 601 d.f, p < 0.001 ). This evidence supports the idea that there is significant local aggregation on the 2m x 2m scale. The observed and randomised quadrat odds ratios are plotted against the stand odds ratios in Figure 3.
+
+```{r echo = F, warning = F, message = F}
+# Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
+# quadrat OR
+plt3 <- ggplot(test_set, aes(x=aor, y=qor)) +
+  geom_smooth(method = lm) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), 
+                size = 0.1, width = 0.1, colour = "green", alpha = 0.5) +
+  geom_errorbar(aes(ymin = rci_low, ymax = rci_high), 
+                size = 0.1, width = 0.1, colour = "grey20", alpha = 0.5) +
+  geom_point(aes(x = aor, y = rqor, colour = "randomised"), alpha = 0.5) +
+  geom_point(aes(colour= "observed"), alpha = 0.5) +
+  scale_colour_manual(name = "Data source", 
+                      values =c('randomised'='grey20','observed'='sienna3'), labels = c("observed", "randomised")) +
+  labs(x = "stand odds ratio", y = "quadrat odds ratio") +
+  ggtitle("Figure 3.") +
+  theme_grey() + coord_cartesian(xlim = c(min(pwor$aor), max(pwor$qor)), 
+                                 ylim = c(min(pwor$aor), max(pwor$qor)))
+# plotly::ggplotly(plt5) %>% layout(autosize = F, width = 800, height = 500)
+plot(plt3)
+```
+We are interested in species pairs that appear to be locally associated; Table 1 lists pairs for which the randomised 95% confidence limit is less than the observed 5% limit, i.e. these pairs show strong local association.
+
+```{r echo = F, warning = F, message = F}
+friends <- (test_set %>% filter(rci_high < ci_low)
+            %>% select(A, B, qor, share_2x2)
+            %>% rename("log(odds ratio)" = qor) 
+            %>% rename("shared quadrats" = share_2x2))
+datatable(friends, caption = 'Table 1. Plants that prefer sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
+```
+
+Conversely, table 2 lists the few pairs that show local exclusion on the same criterion(5% limit on randomised data greater than observed 95% limit)
+```{r echo = F, warning = F, message = F}
+enemies <- (test_set %>% filter(rci_low > ci_high)
+              %>% select(A, B, qor, share_2x2)
+              %>% rename("log(odds ratio)" = qor) 
+              %>% rename("shared quadrats" = share_2x2))
+datatable(enemies, caption = 'Table 2. Plants that avoid sharing a quadrat') %>% formatRound('log(odds ratio)',2)
+```
+
+This analysis strongly that several plant pairs in mesotrophic grassland samples tend to be locally associated. As expected, the number of local associations that can be positively identified is less than in the previous (probably flawed) attempt, but not negligible. It is likely that some local associations have been excluded due to type II errors (false negative); rejection of the alternative hypothesis does not imply acceptance of the null.
+
+Further notebooks will examine other techniques for detecting local assocation, and explore the relationships between locally associated taxa.
