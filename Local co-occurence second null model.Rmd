@@ -6,32 +6,33 @@ output: html_notebook
 This notebook follows on from Local groups.nb.Rmd, in which I attempted to adduce evidence for local pairwise co-occurence between plant taxa in the River Ouse Project meadows database. I am greatly indebted to Aaron Ellison for drawing my attntion to the general topic of null models, and in particular to Nick Gotelli & Gary Graves’ Null Models in Ecology:  [link](https://www.uvm.edu/~ngotelli/nullmodelspage.html). The epilogue to that book contains this advice:
 
 *We suggest that ecologists ask themselves the following questions before
-submitting the results of a null model study for publication:  
+submitting the results of a null model study for publication:*
 
-1. Were the species data (measurements, geographic distributions,
+*1. Were the species data (measurements, geographic distributions,
 habitat, etc.) of high quality and derived from personal field
-work, specimens, or original literature sources?
+work, specimens, or original literature sources?*
 
-2. Were source pools constructed with a standardized methodology,
+*2. Were source pools constructed with a standardized methodology,
 taking into account the spatial distribution of habitats and
-resources?  
+resources?*
 
-3. Was the null model used appropriate for the question at hand,
+*3. Was the null model used appropriate for the question at hand,
 and was it thoroughly described in the methods so that others
-could use it?  
+could use it?*  
 
-4. Was the computer implementation of the null model checked for
-programming errors and was it tested with idealized data sets?  
+*4. Was the computer implementation of the null model checked for
+programming errors and was it tested with idealized data sets?*
 
-5. Were the ceteris paribus assumptions defended and discussed?  
+*5. Were the ceteris paribus assumptions defended and discussed?*
 
-6. Will source pool and island species data be published or deposlted in a databank for public access?*  
+*6. Will source pool and island species data be published or deposlted in a databank for public access?* 
 
-Here, I'm concentrating on item 3 because I had'nt thought hard enough about the null model and now think it was probably inadequate. What follows is an attempt at a better null  model which I am pretty sure will vastly reduce, and possibly eliminate entirely, all my previously supposed evidence for local pairwise association.
+Here, I'm concentrating on item 3 because I hadn't thought hard enough about the null model and now think it was probably inadequate. What follows is an attempt at a better null  model which I am pretty sure will vastly reduce, and possibly eliminate entirely, all my previously supposed evidence for local pairwise association.
 
 My previous model successfully preserved stand-level associations while randomising out any possible local associations within the 5 quadrats of a stand. But it did that without preserving the species composition of a stand. The real data were compared with an entirely simulated set composed of abstract "stands" constructed purely from the data-wide marginal probabilities and odds-ratio of each species pair. In effect, I was asking "if this pair occurred in a stand with frequencies governed by their data-wide contingency table, what would be the expected quadrat odds ratio given no extra local association?" This approach treats all stands as equivalent, which is not realistic as we know that several different kinds of mesotrophic grassland were included in the survey, and the result is not directly comparable with the original data.
 
 The approach to be attempted here is to modify the original data set by randomising the assignment of a stand's species to the quadrats, thus destroying any local associations that might be present while retaining both the stand-level association (odds ratio for each pair) and the species composition of the stand. 
+
 
 The following code loads libraries, functions, gets the stand- and quadrat- odds ratios, and plots quadrat-odds ratios vs stand-odds ratios for each species pair.
 ```{r echo = F, warning = F, message = F}
@@ -188,6 +189,7 @@ We have `r length(sp_list$n)` species, `r length(sp_list$n)*(length(sp_list$n)-1
   rm(net, n2)
 ```
 Restricting the analysis to pairs with more than 20 co-occurences reduces the number of pairs to `r length(edges$from)`.
+
 ```{r echo = F, warning = F, message = F}
   
   # For each species pair, get the assembly odds ratio.
@@ -250,7 +252,10 @@ Restricting the analysis to pairs with more than 20 co-occurences reduces the nu
   rm(sfx)
   # Join share_2x2 for later use
   pwor <- left_join(pwor, edges, by = c("A" = "from", "B" = "to"))
-
+```
+## Stand-  and quadrat- level contingencies.
+The contingency tables could be constructed with co-occurences in stands (5 quadrats) or in individual quadrats. The chance of finding two species together in a five quadrat stand is clearly greater than finding them together in a single quadrat. The regression of quadrat odds ratio on stand odds ratio (Figure 1) is `r round(lm(pwor$qor ~ pwor$aor)$coefficients[2], 2)`, less than 1.0, as expected.
+```{r}
   lin_model <- y ~ x # For stat_poly_eq
 # Plot quadrat OR vs assembly OR. Note slope < 1.0; assemblies OR
 # tend to be higher than quadrat OR because of increased expectation that
@@ -270,7 +275,12 @@ plt1 <- ggplot(pwor, aes(x=aor, y=qor)) +
 plot(plt1)
 
 ```
-So now we're set up to make the modified data set, d2.
+The scatter of points around the regression line in Figure 1 suggested that for some species pairs there might be a greater than expected chance of finding them in the same quadrat, while for othere there might be less, perhaps indicating some short range (on the scale of 2m x 2m) interactions. 
+
+## Are the quadrat-level associations stronger than might be expected?
+Uniform stands are never truly uniform but have some level of granularity within which variations in abiotic or biotic environmental factors play a part in determining which species are locally present. It seemed worthwhile to examine whether the quadrat level associations may be stronger than would be expected by chance from the observed stand level associations.
+
+Here I make a modified data set, d2, in which assignment of species to quadrats *within each stand* is randomised, eliminating any local association, but preserving the overall species composition of the stand.
 ```{r echo = F, warning = F, message = F}
 # Get the list of assemblies, a
 a <- the_data %>% distinct(assembly_id) %>% select(assembly_id)
@@ -284,7 +294,8 @@ for (i in seq_along(row.names(a)))
 }
 
 ```
-We want to repeat the quadrat level analysis on d2, and eventually to keep the same set of species pairs that were used to make Figure 1.
+
+We want to repeat the quadrat level analysis on d2, and eventually to keep the same set of species pairs that were used to make Figure 1. Figures 2a and b are the outcome of this analysis. 
 ```{r echo = F, warning = F, message = F}
 random_q_data <- d2 %>% select(new_q_id, species_name)
 random_q_pwor <- tibble(
@@ -305,10 +316,38 @@ for (i in seq_along(row.names(edges)))
   random_q_pwor[i, 7:9] <- OddsRatio(s)
 } # Don't remove NAs at this stage
 
-test_set <- left_join(pwor, random_q_pwor, by = c("A", "B"))
-test_set <- test_set %>% select(A, B, aor, qor = qor.x, ci_low = ci_low.x, ci_high = ci_high.x, rqor = qor.y, rci_low = ci_low, rci_high = ci_high, share_2x2)
+# For each species pair, get the assembly odds ratio from d2.
+random_a_data <- d2 %>% select(assembly_id, species_name) %>% distinct()
+random_a_pwor <- tibble(
+  A = edges$from,
+  B = edges$to,
+  jc1 = 0,
+  jc2 = 0,
+  jc3 = 0,
+  jc4 = 0,
+  aor = 0,
+  ci_low = 0,
+  ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(random_a_data, edges$from[i], edges$to[i])
+    random_a_pwor[i, 3:6] <- s[1:4]
+    random_a_pwor[i, 7:9] <- OddsRatio(s)
+  } # Don't remove NAs at this stage
 
-plt2 <- ggplot(test_set, aes(x = qor, y = rqor)) +
+test_set <- (left_join(random_a_pwor, random_q_pwor, by = c("A", "B"))
+          %>% filter(!is.na(qor))
+          %>% filter(!is.infinite(qor))
+          %>% filter(!is.na(aor))
+          %>% filter(!is.infinite(aor)))
+
+test_set <- test_set %>% select(A, B, raor = aor, aci_low = ci_low.x, aci_high = ci_high.x, rqor = qor, rci_low = ci_low.y, rci_high = ci_high.y)
+
+# Get data for plt2b
+p2b_dat <- (left_join(pwor, test_set, by = c("A", "B"))
+          %>% select(qor, rqor))
+plt2b <- ggplot(p2b_dat, aes(x = qor, y = rqor)) +
   geom_abline(colour = "green")+
   geom_smooth(method = lm, size = 0.5) +
   stat_poly_eq(formula = lin_model,
@@ -317,23 +356,37 @@ plt2 <- ggplot(test_set, aes(x = qor, y = rqor)) +
                parse = TRUE) +         
   geom_point(alpha = 0.5) +
   labs(x = "observed odds ratio", y = "locally randomised odds ratio)") +
-  ggtitle("Figure 2. Quadrat odds ratios: null model (ordinate) vs observed (abscissa)") +
+  ggtitle("Figure 2b. Quadrat odds ratios: null model (ordinate) vs observed (abscissa)") +
   theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
-plot(plt2)
+rm(p2b_dat)
 
+#Get data for plt2a
+p2a_dat <- (left_join(pwor, test_set, by = c("A", "B"))
+          %>% select(aor, raor))
+# Plot simulated vs observed aor : expect near unit slope
+plt2a <- ggplot(p2a_dat, aes(x = aor, y = raor)) +
+  geom_abline(colour = "green")+
+  geom_smooth(method = lm, size = 0.5) +
+  geom_point(alpha = 0.5) +
+  labs(x = "observed odds ratio", y = "locally randomised odds ratio") +
+  ggtitle("Figure 2a. Stand odds ratios: null model(ordinate) vs observed") +
+  theme_grey() + coord_cartesian(xlim = c(-2, 3), ylim = c(-2,3))
+#plot(plt2b)
+grid.arrange(plt2a, plt2b, ncol = 2)
+rm(p2b_dat)
 ```
-Randomising the assignment of species to quadrats within stands has evidently reduced the quadrat odds ratios. The slope of the regression line in Figure 2, 0.671, is significantly less than 1.0 (t = 21 with 601 d.f, p < 0.001 ). This evidence supports the idea that there is significant local aggregation on the 2m x 2m scale. The observed and randomised quadrat odds ratios are plotted against the stand odds ratios in Figure 3.
+Randomising the assignment of species to quadrats within stands has not impacted the stand odds ratios (Figure 2a), but has reduced the quadrat odds ratios. The slope of the regression line in Figure 2b, is significantly less than 1.0 (t = 21 with 601 d.f, p < 0.001 ). This evidence supports the idea that there is significant local aggregation on the 2m x 2m scale. The observed and randomised quadrat odds ratios are plotted against the stand odds ratios in Figure 3.
 
 ```{r echo = F, warning = F, message = F}
 # Plot observed quadrat OR ~ assembly OR, superimpose reconstructed
 # quadrat OR
-plt3 <- ggplot(test_set, aes(x=aor, y=qor)) +
+plt3 <- ggplot(pwor, aes(x=aor, y=qor)) +
   geom_smooth(method = lm) +
-  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), 
+  geom_errorbar(aes(ymin = ci_low.x, ymax = ci_high.x), 
                 size = 0.1, width = 0.1, colour = "green", alpha = 0.5) +
-  geom_errorbar(aes(ymin = rci_low, ymax = rci_high), 
+  geom_errorbar(aes(ymin = test_set$rci_low, ymax = test_set$rci_high), 
                 size = 0.1, width = 0.1, colour = "grey20", alpha = 0.5) +
-  geom_point(aes(x = aor, y = rqor, colour = "randomised"), alpha = 0.5) +
+  geom_point(aes(x = aor, y = test_set$rqor, colour = "randomised"), alpha = 0.5) +
   geom_point(aes(colour= "observed"), alpha = 0.5) +
   scale_colour_manual(name = "Data source", 
                       values =c('randomised'='grey20','observed'='sienna3'), labels = c("observed", "randomised")) +
@@ -344,19 +397,27 @@ plt3 <- ggplot(test_set, aes(x=aor, y=qor)) +
 # plotly::ggplotly(plt5) %>% layout(autosize = F, width = 800, height = 500)
 plot(plt3)
 ```
-We are interested in species pairs that appear to be locally associated; Table 1 lists pairs for which the randomised 95% confidence limit is less than the observed 5% limit, i.e. these pairs show strong local association.
+The confidence intervals in Figure 3 are 1.95(standard error) using the approximation
+
+$SE = \sqrt{\frac{1}{n_{11}}+\frac{1}{n_{10}}+\frac{1}{n_{01}}+\frac{1}{n_{00}}}$
+
+## Which species pairs exhibit local association?
+Pairs for which the lower limit of the observed quadrat confidence interval is above the upper limit of the null model confidence interval are taken as showing a significant local association (Table 1). 
 
 ```{r echo = F, warning = F, message = F}
-friends <- (test_set %>% filter(rci_high < ci_low)
+# Get data for tables
+table_dat <- (left_join(pwor, test_set, by = c("A", "B"))
+          %>% select(A, B, qor, rci_high, rci_low, ci_high.x, ci_low.x, share_2x2))
+friends <- (table_dat %>% filter(rci_high < ci_low.x)
             %>% select(A, B, qor, share_2x2)
             %>% rename("log(odds ratio)" = qor) 
             %>% rename("shared quadrats" = share_2x2))
 datatable(friends, caption = 'Table 1. Plants that prefer sharing a quadrat') %>%  formatRound('log(odds ratio)',2)
 ```
 
-Conversely, table 2 lists the few pairs that show local exclusion on the same criterion(5% limit on randomised data greater than observed 95% limit)
+Conversely, Table 2 lists the few pairs that show local exclusion on the same criterion(5% limit on randomised data greater than observed 95% limit)
 ```{r echo = F, warning = F, message = F}
-enemies <- (test_set %>% filter(rci_low > ci_high)
+enemies <- (table_dat %>% filter(rci_low > ci_high.x)
               %>% select(A, B, qor, share_2x2)
               %>% rename("log(odds ratio)" = qor) 
               %>% rename("shared quadrats" = share_2x2))
@@ -365,4 +426,4 @@ datatable(enemies, caption = 'Table 2. Plants that avoid sharing a quadrat') %>%
 
 This analysis strongly that several plant pairs in mesotrophic grassland samples tend to be locally associated. As expected, the number of local associations that can be positively identified is less than in the previous (probably flawed) attempt, but not negligible. It is likely that some local associations have been excluded due to type II errors (false negative); rejection of the alternative hypothesis does not imply acceptance of the null.
 
-Further notebooks will examine other techniques for detecting local assocation, and explore the relationships between locally associated taxa.
+Further notebooks will examine other techniques for detecting local assocation, and explore the relationships between locally associated taxa. While probably not in notebook form, I will attend to the other recommendations made by Gotelli and Graves!
