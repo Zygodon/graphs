@@ -1,11 +1,4 @@
 
-# PredictP <- function(ja, jq)
-# {
-#   p <- unlist(ja[1, 3]/sum(pwor[1, 3:6]))
-#   b <- unlist(pwor[1, 13]/sum(pwor[1, 13:16]))
-#   pp <- 1 - (1-b)^5
-# }
-
 # Make quadrat odds ratio and join wih aor
 qor <- tibble(
   A = edges$from,
@@ -30,12 +23,15 @@ pwor <- (left_join(aor, qor, by = c("A", "B"))
          %>% filter(!is.infinite(or.y))
          %>% filter(p_val<0.05))
 
+# Predict binomial p (probability of co-occurence in 5 quadrats) from bernouilli b
+# (probability of co-occurence in 1 quadrat)
 pred_p <- tibble(A = pwor$A,
              B = pwor$B,
              p = 0,
              b = 0,
              pp = 0)
 
+# Joint contingency tables abcd; ja for stands, jq for quadrats
 ja <- pwor %>% select(jc1.x:jc4.x)
 jq <- pwor %>% select(jc1.y:jc4.y)
 
@@ -50,8 +46,12 @@ for (i in seq_along(row.names(pred_p)))
   pred_p$pp[i] <- unlist(pp)
 }
 
+rm(ja, jq)
+
 plt1 <- ggplot(pred_p, aes(p, pp)) +
   geom_point() +
-  geom_abline(colour = "red")
+  geom_abline(colour = "red") +
+  xlim(0, 1) +
+  ylim(0, 1)
 plot(plt1)
 rm

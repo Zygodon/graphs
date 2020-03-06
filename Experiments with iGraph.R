@@ -33,7 +33,7 @@ plot(as.undirected(net1), vertex.label="", vertex.color=vcol)
 
 wc <- cluster_walktrap(net1, weights = E(net1)$weight)
 modularity(wc)
-plot(wc, net1, vertex.label=NA, layout = l)
+plot(wc, net1, vertex.label=NA, layout = l1)
 
 
 # Friends
@@ -61,13 +61,22 @@ plot(wc, net2, vertex.label = NA, layout = l1)
 im <- cluster_infomap(net2)
 plot(im, net2, vertex.label = NA, layout = l1)
 
-sink("infomap.txt")
-communities(im)
-sink()
 
-sink("degree_friends.txt")
-degree(net2, mode="all")
-sink()
+l2 <- norm_coords(l1, ymin=-1, ymax=1, xmin=-1, xmax=1)
+
+V(net2)$community <- im$membership
+colrs <- adjustcolor( c("tomato", "gold", "yellowgreen", "orange1", "gray50"), alpha=.8)
+E(net2)$width <- 1
+E(net2)$color <- "black"
+plot(net2, vertex.color=colrs[V(net2)$community], vertex.label = NA, rescale=F, layout = l2*1)
+
+# sink("infomap.txt")
+# communities(im)
+# sink()
+# 
+# sink("degree_friends.txt")
+# degree(net2, mode="all")
+# sink()
 
 deg <- degree(net2, mode="all")
 
