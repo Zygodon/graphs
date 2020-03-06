@@ -1,0 +1,217 @@
+---
+title: "Interspecific plant associations in flower rich grasslands"
+output: html_notebook
+fig.width : 6
+fig.asp : 0.618
+---
+```{r echo = F, warning = F, message = F}
+# Libraries
+library("RMySQL")
+library(tidyverse)
+library(networkD3)
+library(igraph)
+library(plotly)
+library(ggpmisc)
+library(DT)
+library(gridExtra)
+
+# Functions
+dbDisconnectAll <- function(){
+  ile <- length(dbListConnections(MySQL())  )
+  lapply( dbListConnections(MySQL()), function(x) dbDisconnect(x) )
+  cat(sprintf("%s connection(s) closed.\n", ile))
+}
+
+# General SQL query
+query <- function(q)
+{
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+# Load the database
+GetTheData <-  function()
+{
+  # GET DATA FROM DB
+  # Remote DB with password
+  con <- dbConnect(MySQL(), 
+                   user  = "guest",
+                   password    = "guest",
+                   dbname="meadows",
+                   port = 3306,
+                   host   = "sxouse.ddns.net")
+  
+  
+  q <- sprintf('select assembly_id, assembly_name, quadrat_count, community, quadrat_id, quadrat_size, visit_date, records_id, species.species_id, 
+    species.species_name from assemblies
+      join quadrats on quadrats.assembly_id = assemblies_id
+      join visit_dates on quadrats.vd_id = visit_dates.vds_id
+      join records on records.quadrat_id = quadrats_id
+      join species on species.species_id = records.species_id
+      # Two assemblies have 0 quadrat count; exclude A.capillaris_stolonifera;
+      # exclude some odd assemblies with no assigned community
+    where quadrat_count = 5 and species.species_id != 4 and community is not null
+    and quadrat_size = "2x2";') 
+  # NOTE: this extract includes "MG5", i.e. some MG5 communities where 
+  # the team have not decided
+  # on a sub-group.
+  
+  rs1 = dbSendQuery(con, q)
+  return(as_tibble(fetch(rs1, n=-1)))
+  dbDisconnectAll()
+}
+
+JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, species_name
+{
+  d <- d %>% rename("id" = 1)
+  A <- A[1]
+  B <- B[1]
+  As <- d %>% filter(species_name == A)
+  Bs <- d %>% filter(species_name == B)
+  j1 <- full_join(As, Bs, by = "id")
+  # Get all the assemblies/quadrats, including ones with neither A nor B
+  q <- d %>% distinct(id) 
+  j2 <- (left_join(q, j1, by = "id") 
+         # NOTE: column length q >= column length j1
+         %>% mutate(X1Y1 = !is.na(species_name.x) & !is.na(species_name.y))
+         %>% mutate(X1Y0 = !is.na(species_name.x) & is.na(species_name.y))
+         %>% mutate(X0Y1 = !is.na(species_name.y) & is.na(species_name.x))
+         %>% mutate(X0Y0 = is.na(species_name.x) & is.na(species_name.y)))
+  s <- colSums(j2[,4:7])
+  return(s)
+}
+
+OddsRatio <-  function(s) # Joint contingency (colSums)
+{
+  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
+  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+  o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
+  ci_low <- o_r - 1.96*se
+  ci_high <- o_r + 1.96*se
+  retval <- c(o_r, ci_low, ci_high)
+  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
+  return(retval)
+}
+
+SfChi <-  function(jc)
+{
+  x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
+  ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
+}
+######### END FUNCTIONS
+
+the_data <- GetTheData()
+# Restrict analysis to species with more than 20 hits
+sp_count <- (the_data 
+             %>% group_by(species_id) 
+             %>% summarise(count = n()))
+n_sp <- length(row.names(sp_count))
+n_pairs <- n_sp * (n_sp-1)
+assembly_count <- the_data %>% distinct(assembly_id) %>% summarise(n = n())
+
+sp_list <- sp_count %>% filter(count > 19)
+reduced_n_sp <- length(row.names(sp_list))
+reduced_n_pairs <-  reduced_n_sp * (reduced_n_sp-1)
+# the_data with reduced species count
+the_data <- the_data %>% filter(species_id %in% sp_list$species_id)
+```
+# Introduction.
+As part of [The River Ouse Project](http://www.sussex.ac.uk/riverouse/), we have been collecting survey data from species rich meadows since 2006. In the data used here the sampling unit is a 2m x 2m quadrat, and five samples were taken from uniform vegetation stands within a meadow. The extract contains presence/absence data from `r assembly_count$n` stands (asssemblies); a total of `r n_sp` species were recorded, most of them infrequently (Figure 1.)
+```{r echo = F, warning = F, message = F}
+fig1 <- ggplot(sp_count, aes(count)) + 
+  geom_histogram() +
+  labs(title ="Hit (detection) frequencies", x = "count of hits", y = "species count") 
+plot(fig1)
+
+```
+
+This yields lots ( `r n_pairs`) of species pairs`. It seems sensible to restrict analysis to the pairs formed between species which occur at least, say, 20 times in the data. This reduces the species cont to `r reduced_n_sp` and the number of pairwise comparisons to `r reduced_n_pairs `. 
+```{r echo = F, warning = F, message = F}
+  assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
+  quadrat_data <- the_data %>% select(quadrat_id, species_name)
+  edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
+            %>% rename(from = species_name.x)
+            %>% rename(to = species_name.y)
+            %>%  select(-quadrat_id)
+            %>% group_by(from, to) 
+            %>% summarise(share_2x2 = n())
+            %>% filter(from != to))
+  edges <- edges %>% filter(share_2x2 > 20)
+  nodes <- distinct(edges, from)
+  net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
+  n2 <- simplify(net, edge.attr.comb = "first")
+  edges <- as_data_frame(n2, what="edges")
+  rm(net, n2)
+  
+  # For each species pair, get the assembly odds ratio.
+  aor <- tibble(
+    A = edges$from,
+    B = edges$to,
+    jc1 = 0,
+    jc2 = 0,
+    jc3 = 0,
+    jc4 = 0,
+    or = 0,
+    ci_low = 0,
+    ci_high = 0)
+  
+  for (i in seq_along(row.names(edges)))
+  {
+    s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+    aor[i, 3:6] <- s[1:4]
+    aor[i, 7:9] <- OddsRatio(s)
+  }
+aor <- (aor %>% filter(!is.na(or))
+          %>% filter(!is.infinite(or)))
+# Join share_2x2 for later use
+aor <- left_join(aor, edges, by = c("A" = "from", "B" = "to"))
+
+# Add Chisquare test
+chi_t <- tibble(stat = rep(0, length(row.names(aor))), 
+                pval = rep(0, length(row.names(aor))))
+for (i in seq_along(row.names(aor)))
+{
+  x <- matrix(unlist(aor[i, 3:6]), ncol = 2, nrow = 2, byrow = T)
+  t <- chisq.test(x)
+  chi_t$stat[i] <- t$statistic
+  chi_t$pval[i] <- t$p.value
+}
+aor$chi <- chi_t$stat
+aor$p_val <- chi_t$pval
+rm(chi_t)
+```
+I use the standard chi squared test for pairwise species associations, and the log(odds ratio) - LOR - to measure the strength and direction (positive association; LOR > 0, negative association, LOR < 0). Figure 2a: the histogram and normal fit for LOR of all species pairs. The vertical line is the null value, the figure suggests that there are more examples of positive association in the data than negative.
+```{r echo = F, warning = F, message = F}
+fig2a <- ggplot(aor, aes(or))  + 
+  geom_histogram(aes(y = ..density..), binwidth = 0.25, colour = "black") + 
+  # geom_histogram( binwidth = 0.25, colour = "black") + 
+  stat_function(fun = dnorm, args = list(mean = mean(aor$or), sd = sd(aor$or)), colour = "green") +
+  geom_vline(xintercept = 0, colour = "red") +
+  xlim(-2.5, 3.5) +
+  ylim(0.0, 0.7) +
+  labs(title ="Figure 2a", x = "log(odds ratio)") 
+# plot(fig2a)
+
+fig2b <- ggplot(filter(aor, p_val<0.05), aes(or))  + 
+  geom_histogram(aes(y = ..density..), binwidth = 0.25, colour = "black") + 
+  # geom_histogram(binwidth = 0.25, colour = "black") + 
+  stat_function(fun = dnorm, args = list(mean = mean(aor$or), sd = sd(aor$or)), colour = "green") +
+  geom_vline(xintercept = 0, colour = "red") +
+  xlim(-2.5, 3.5) +
+  ylim(0.0, 0.7) +
+  labs(title ="Figure 2b", x = "log(odds ratio)") 
+# plot(fig2b)
+grid.arrange(fig2a, fig2b, ncol = 2)
+
+pairs <- aor %>% filter(p_val < 0.05)
+n_p <- length(row.names(pairs))
+```
+Figure 2b shows the effect of removing the species pairs where the chi square p value is greater then 0.05. On this basis, we have `r n_p` associated pairs. Positive associations listed in Table 1; negative in Table 2.
