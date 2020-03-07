@@ -52,6 +52,8 @@ plt1 <- ggplot(pred_p, aes(p, pp)) +
   geom_point() +
   geom_abline(colour = "red") +
   xlim(0, 1) +
-  ylim(0, 1)
+  ylim(0, 1) +
+  xlab("observed P(co-occurrence)") +
+  ylab("P(co-occurence) estimated from single trial")
 plot(plt1)
 rm
