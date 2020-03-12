@@ -162,7 +162,7 @@ plot(fig2a)
 aor <- aor %>% mutate(net_weights = (aor$lor - min(aor$lor))*2/max(aor$lor - min(aor$lor)))
 
 fp <- aor %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
-fc <- fp %>% group_by(species) %>% summarise(count = n())
+fc <- fp %>% group_by(species) %>% summarise(count = n()) #nodes; vertices
 
 net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
 l1 <- layout.fruchterman.reingold(net1)
@@ -173,64 +173,12 @@ E(net1)$weight <- aor$net_weights
 # E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
 plot(net1, vertex.label=NA, layout = l1)
 
+
 im <- cluster_infomap(net1)
 modularity(im)
 plot(im, net1, vertex.label = NA, layout = l1)
 
-# Eliminate edges with simple threshold
-cutoff <- mean(E(net1)$weight)
-net2 <- delete_edges(net1, E(net1)[weight < cutoff])
-plot(net2, vertex.label=NA, layout = l1)
-
-im <- cluster_infomap(net2)
-
-modularity(im)
-
-mods <- tibble(theta = seq(0, 2, 0.1), mod = 0.0)
-for (i in seq_along(mods$theta))
-{
-  net2 <- delete_edges(net1, E(net1)[weight < mods$theta[i]])
-  isolated <-  which(degree(net2)==0)
-  net2 <-  delete.vertices(net2, isolated)
-  mods$mod[i] <- modularity(cluster_infomap(net2))
-}
-
-ggplot(mods, aes(theta, mod)) +
-  geom_point()
-
-net3 <- delete_edges(net1, E(net1)[weight < 1.1])
-# net3 <- delete_edges(net1, E(net1)[weight < 1.7])
-isolated <-  which(degree(net3)==0)
-net3 <-  delete.vertices(net3, isolated)
-im <- cluster_infomap(net3)
-modularity(im)
-plot(im, net3, vertex.label = NA)
-
-# Eliminate edges by quantile from the centre of the distribution outwards
-q <- quantile(E(net1)$weight, probs = seq(0, 1, 0.01))
-e_count <- length(E(net1))
-mods <- tibble(theta1 = seq(50, 1, -1), theta2 = seq(52, 101, 1),mod = 0.0, removed = 0, i = 0)
-for (i in seq_along(row.names(mods)))
-{
-  net2 <- delete_edges(net1, E(net1)[which(E(net1)$weight > q[mods$theta1[i]] & E(net1)$weight < q[mods$theta2[i]])])
-  isolated <-  which(degree(net2)==0)
-  net2 <-  delete.vertices(net2, isolated)
-  mods$mod[i] <- modularity(cluster_infomap(net2))
-  mods$removed[i] <- e_count - length(E(net2))
-  mods$i[i] <- i
-}
-
-ggplot(mods, aes(i, mod)) +
-  geom_point()
-
-
-net3 <- delete_edges(net1, E(net1)[which(E(net1)$weight > q[mods$theta1[38]] & E(net1)$weight < q[mods$theta2[38]])])
-im <- cluster_infomap(net3)
-modularity(im)
-plot(im, net3, vertex.label = NA, layout = l1)
-
-
-# Remove edges by quantile, starting by removing (all) negative associations
+# Remove edges by quantile, starting by removing all negative associations
 
 q <- quantile(E(net1)$weight, probs = seq(0.5, 1, 0.01))
 e_count <- length(E(net1))
@@ -260,4 +208,82 @@ ggplot(mods, aes(i, vertices)) +
 net3 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[45])])
 im <- cluster_infomap(net3)
 modularity(im)
-plot(im, net3, vertex.label = NA)
+modularity(cluster_infomap(net3))
+
+## EDGE TRIMMING BY "VALUE"
+
+aor <- aor %>% mutate(lor2 = lor^2)
+values <- aor %>%  select(lor2) %>% arrange(lor2) %>% filter(lor2 > 0.0)
+
+net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
+l1 <- layout.fruchterman.reingold(net1)
+# V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
+V(net1)$size <- 1
+E(net1)$weight <- aor$net_weights
+# E(net1)$width <- 0.5 * abs(aor$lor)
+# E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
+plot(net1, vertex.label=NA, layout = l1)
+
+
+mods <- tibble(mod = rep(0.0, length(row.names(values))),
+               edges = 0, 
+               vertices = 0, 
+               i = 0)
+
+for (i in seq_along(row.names(values)))
+{
+  net2 <- delete_edges(net1, which(E(net1)$lor2 < values$lor2[i]))
+  isolated <-  which(degree(net2)==0)
+  net2 <-  delete.vertices(net2, isolated)
+  mods$mod[i] <- modularity(cluster_infomap(net2))
+  mods$edges[i] <- length(E(net2))
+  mods$vertices[i] <- length(V(net2))
+  mods$i[i] <- i
+}
+
+ggplot(mods, aes(i, mod)) +
+  geom_point()
+
+
+# ### Vertex trimming: Does not change modularity (stays at 0)
+# 
+# vsA <- (aor %>% select(A, B, lor) 
+#           %>% mutate(lor2 = lor^2)
+#           %>% group_by(A) 
+#           %>% summarise(s2A = sum(lor2)))
+# vsB <- (aor %>% select(A, B, lor) 
+#         %>% mutate(lor2 = lor^2)
+#         %>% group_by(B) 
+#         %>% summarise(s2B = sum(lor2)))
+# 
+# t <- full_join(vsA, vsB, by = c("A" = "B"))
+# t <- (t %>% replace_na(list(s2A = 0, s2B = 0))
+#       %>% mutate(lor2 = s2A + s2B)
+#       %>% select(species = A, value = lor2))
+# 
+# values <- t %>%  arrange(value)
+# v_mods <- tibble(mod = rep(0.0, length(values$value)),
+#                edges = 0, 
+#                vertices = 0, 
+#                i = 0)
+# 
+# g1 <- graph_from_data_frame(d = aor, vertices = t, directed = F)
+# 
+# for (i in seq_along(row.names(t)))
+# {
+#   g2 <- delete_vertices(g1, which(V(g1)$value < values$value[i]))
+#   isolated <-  which(degree(g2)==0)
+#   g2 <-  delete.vertices(g2, isolated)
+#   v_mods$mod[i] <- modularity(cluster_infomap(g2))
+#   v_mods$edges[i] <- length(E(g2))
+#   v_mods$vertices[i] <- length(V(g2))
+#   v_mods$i[i] <- i
+# }
+# 
+# ggplot(v_mods, aes(i, mod)) +
+#   geom_point()
+# 
+# ggplot(v_mods, aes(i, vertices)) +
+#   geom_point()
+
+
