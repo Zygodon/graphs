@@ -208,12 +208,11 @@ ggplot(mods, aes(i, vertices)) +
 net3 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[45])])
 im <- cluster_infomap(net3)
 modularity(im)
-modularity(cluster_infomap(net3))
 
 ## EDGE TRIMMING BY "VALUE"
 
 aor <- aor %>% mutate(lor2 = lor^2)
-values <- aor %>%  select(lor2) %>% arrange(lor2) %>% filter(lor2 > 0.0)
+values <- aor %>%  select(lor2) %>% arrange(lor2) %>% filter(lor2 > 0.0) %>% distinct(lor2)
 
 net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
 l1 <- layout.fruchterman.reingold(net1)
@@ -244,6 +243,24 @@ for (i in seq_along(row.names(values)))
 ggplot(mods, aes(i, mod)) +
   geom_point()
 
+net_low <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[2500])])
+im_low <- cluster_infomap(net_low)
+modularity(im_low)
+plot(im_low, net_low, vertex.label=NA)
+
+net_high <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[2850])])
+im_high <- cluster_infomap(net_high)
+modularity(im_high)
+plot(im_high, net_high, vertex.label=NA)
+
+sink("communities im_low  2020-03-13.txt")
+print(communities(im_low))
+sink()
+
+net_super <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[3020])])
+im_super <- cluster_infomap(net_super)
+modularity(im_super)
+plot(im_super, net_super, vertex.label=NA)
 
 # ### Vertex trimming: Does not change modularity (stays at 0)
 # 
