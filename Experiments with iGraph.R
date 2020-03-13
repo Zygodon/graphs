@@ -164,50 +164,50 @@ aor <- aor %>% mutate(net_weights = (aor$lor - min(aor$lor))*2/max(aor$lor - min
 fp <- aor %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
 fc <- fp %>% group_by(species) %>% summarise(count = n()) #nodes; vertices
 
-net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
-l1 <- layout.fruchterman.reingold(net1)
-# V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
-V(net1)$size <- 1
-E(net1)$weight <- aor$net_weights
-# E(net1)$width <- 0.5 * abs(aor$lor)
-# E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
-plot(net1, vertex.label=NA, layout = l1)
-
-
-im <- cluster_infomap(net1)
-modularity(im)
-plot(im, net1, vertex.label = NA, layout = l1)
+# net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
+# l1 <- layout.fruchterman.reingold(net1)
+# # V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
+# V(net1)$size <- 1
+# E(net1)$weight <- aor$net_weights
+# # E(net1)$width <- 0.5 * abs(aor$lor)
+# # E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
+# plot(net1, vertex.label=NA, layout = l1)
+# 
+# 
+# im <- cluster_infomap(net1)
+# modularity(im)
+# plot(im, net1, vertex.label = NA, layout = l1)
 
 # Remove edges by quantile, starting by removing all negative associations
 
-q <- quantile(E(net1)$weight, probs = seq(0.5, 1, 0.01))
-e_count <- length(E(net1))
-mods <- tibble(mod = rep(0.0, length(q)),
-               edges = 0, 
-               vertices = 0, 
-               i = 0)
-
-for (i in seq_along(row.names(mods)))
-{
-  net2 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[i])])
-  isolated <-  which(degree(net2)==0)
-  net2 <-  delete.vertices(net2, isolated)
-  mods$mod[i] <- modularity(cluster_infomap(net2))
-  mods$edges[i] <- length(E(net2))
-  mods$vertices[i] <- length(V(net2))
-  mods$i[i] <- i
-}
-
-ggplot(mods, aes(i, mod)) +
-  geom_point()
-
-ggplot(mods, aes(i, vertices)) +
-  geom_point()
-
-
-net3 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[45])])
-im <- cluster_infomap(net3)
-modularity(im)
+# q <- quantile(E(net1)$weight, probs = seq(0.5, 1, 0.01))
+# e_count <- length(E(net1))
+# mods <- tibble(mod = rep(0.0, length(q)),
+#                edges = 0, 
+#                vertices = 0, 
+#                i = 0)
+# 
+# for (i in seq_along(row.names(mods)))
+# {
+#   net2 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[i])])
+#   isolated <-  which(degree(net2)==0)
+#   net2 <-  delete.vertices(net2, isolated)
+#   mods$mod[i] <- modularity(cluster_infomap(net2))
+#   mods$edges[i] <- length(E(net2))
+#   mods$vertices[i] <- length(V(net2))
+#   mods$i[i] <- i
+# }
+# 
+# ggplot(mods, aes(i, mod)) +
+#   geom_point()
+# 
+# ggplot(mods, aes(i, vertices)) +
+#   geom_point()
+# 
+# 
+# net3 <- delete_edges(net1, E(net1)[which(E(net1)$weight < q[45])])
+# im <- cluster_infomap(net3)
+# modularity(im)
 
 ## EDGE TRIMMING BY "VALUE"
 
@@ -253,14 +253,19 @@ im_high <- cluster_infomap(net_high)
 modularity(im_high)
 plot(im_high, net_high, vertex.label=NA)
 
-sink("communities im_low  2020-03-13.txt")
-print(communities(im_low))
-sink()
+# sink("communities im_low  2020-03-13.txt")
+# print(communities(im_low))
+# sink()
 
 net_super <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[3020])])
 im_super <- cluster_infomap(net_super)
 modularity(im_super)
 plot(im_super, net_super, vertex.label=NA)
+
+compare(im_high, im_super, method = "vi")
+
+
+
 
 # ### Vertex trimming: Does not change modularity (stays at 0)
 # 
