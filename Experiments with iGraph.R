@@ -69,8 +69,8 @@ JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, spe
   As <- d %>% filter(species_name == A)
   Bs <- d %>% filter(species_name == B)
   j1 <- full_join(As, Bs, by = "id")
-  # Get all the assemblies/quadrats, including ones with neither A nor B
-  q <- d %>% distinct(id) 
+  # Get all the assembly ids, including ones with neither A nor B
+  q <- d %>% ungroup() %>% select(id) %>% distinct(id)
   j2 <- (left_join(q, j1, by = "id") 
          # NOTE: column length q >= column length j1
          %>% mutate(X1Y1 = !is.na(species_name.x) & !is.na(species_name.y))
@@ -81,90 +81,160 @@ JointContingency <- function(d, A, B) # quadrat/assembly data, species_name, spe
   return(s)
 }
 
-OddsRatio <-  function(s) # Joint contingency (colSums)
-{
-  # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
-  se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
-  o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
-  ci_low <- o_r - 1.96*se
-  ci_high <- o_r + 1.96*se
-  retval <- c(o_r, ci_low, ci_high)
-  names(retval) <- c("odds_ratio", "ci_low", "ci_high")
-  return(retval)
-}
-
-SfChi <-  function(jc)
-{
-  x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
-  ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
-}
+# OddsRatio <-  function(s) # Joint contingency (colSums)
+# {
+#   # Standard Error https://en.wikipedia.org/wiki/Odds_ratio
+#   se <- sqrt((1/s[1] + (1/s[2]) + (1/s[3]) + (1/s[4]))) # std error of the log(o_r)
+#   o_r <- log((s[1]*s[4])/(s[2]*s[3])) # returning LOG OR
+#   ci_low <- o_r - 1.96*se
+#   ci_high <- o_r + 1.96*se
+#   retval <- c(o_r, ci_low, ci_high)
+#   names(retval) <- c("odds_ratio", "ci_low", "ci_high")
+#   return(retval)
+# }
+# 
+# Sverticeshi <-  function(jc)
+# {
+#   x <- matrix(unlist(jc), ncol = 2, nrow = 2, byrow = T)
+#   ifelse(chisq.test(x)$p.value < 0.05, "yes", "no")
+# }
 ######### END FUNCTIONS
 
 the_data <- GetTheData()
-# Restrict analysis to species with more than 20 hits
-sp_count <- (the_data 
-             %>% group_by(species_id) 
-             %>% summarise(count = n()))
-n_sp <- length(row.names(sp_count))
-n_pairs <- n_sp * (n_sp-1)
-assembly_count <- the_data %>% distinct(assembly_id) %>% summarise(n = n())
+assembly_count <- unlist(the_data %>% distinct(assembly_id) %>% summarise(n = n()))
 
-# # DON'T REDUCE THE DATA!
+# Make the edges 
+assembly_data <- (the_data %>% select(assembly_id, species_name) 
+                  %>% distinct()
+                  %>% group_by(species_name, assembly_id))
 
-# Make the edges
-assembly_data <- the_data %>% select(assembly_id, species_name) %>% distinct()
-quadrat_data <- the_data %>% select(quadrat_id, species_name)
-edges <- (full_join(quadrat_data, quadrat_data, by = "quadrat_id")
-          %>% rename(from = species_name.x)
-          %>% rename(to = species_name.y)
-          %>%  select(-quadrat_id)
-          %>% group_by(from, to) 
-          %>% summarise(share_2x2 = n())
-          %>% filter(from != to))
-nodes <- distinct(edges, from)
-net <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
-n2 <- simplify(net, edge.attr.comb = "first")
-edges <- as_data_frame(n2, what="edges")
-rm(net, n2)
+edges <- (full_join(assembly_data, assembly_data, by = "assembly_id")
+          %>% rename(A = species_name.x)
+          %>% rename(B = species_name.y)
+          %>% group_by(A, B) 
+          %>% summarise(n = n())
+          # %>% select(-n)
+          %>% filter(A != B))
+# # Get a vertices list
+edge_pivot <- edges %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
+vertices <- edge_pivot %>% group_by(species) %>% summarise(count = n()) %>% select(-count) #nodes; vertices
+rm(edge_pivot)
 
-# For each species pair, get the assembly odds ratio.
+G0 <- graph_from_data_frame(d = edges, vertices = vertices, directed = F)
+# Remove loops and duplicate edges
+G0 <- simplify(G0, edge.attr.comb = "first")
+candidate_edges <- as_tibble(as_data_frame(G0, what="edges")) %>% rename(A = from, B = to)
+rm(edges, G0) # G0 not suitable for analysis ...
+
+# For each species pair, get the odds ratio.
 aor <- tibble(
-  A = edges$from,
-  B = edges$to,
+  A = candidate_edges$A,
+  B = candidate_edges$B,
   jc1 = 0,
   jc2 = 0,
   jc3 = 0,
   jc4 = 0,
-  or = 0)
+  or = 0,
+  pval = 0)
 
-for (i in seq_along(row.names(edges)))
+for (i in seq_along(row.names(candidate_edges)))
 {
-  s <- JointContingency(assembly_data, edges$from[i], edges$to[i])
+  s <- JointContingency(assembly_data, candidate_edges$A[i], candidate_edges$B[i])
   aor[i, 3:6] <- s[1:4]
-  ft <- fisher.test(matrix(s, nrow = 2, ncol = 2, byrow = T) ,alternative = "greater")
-  aor[i, 7] <- ft$estimate
 }
+# Remove 0 entries in the contingency tables
+aor <-(aor %>% filter(jc1 != 0)
+       %>% filter(jc2 != 0)
+       %>% filter(jc3 != 0)
+       %>% filter(jc4 != 0))
 
-aor <- aor %>% mutate(lor = log(or))
-aor <- (aor %>% filter(!is.na(or))
-        %>% filter(!is.infinite(or))
-        %>% filter(!is.infinite(lor)))
+for (i in seq_along(row.names(aor)))
+{
+  s <- aor[i, 3:6]
+  ft <- fisher.test(matrix(s, nrow = 2, ncol = 2, byrow = T) ,alternative = "greater")
+  aor[i, 7] <- ft$estimate  # or
+  aor[i, 8] <- ft$p.value
+}
+# 
+# # aor <- aor %>% mutate(or = ifelse(is.infinite(or), 300, or)) %>% mutate(lor = log(or))
+# 
+# aor <- aor %>% mutate(lor = log(or))
+# # aor <- (aor %>% filter(!is.na(or)) # Actually there are no NAs with fisher estimate
+#             # remove cases, A with no B, B with no A. 1770 of these
+# #            %>% filter(!is.infinite(or))) # infinites come if A has no B & vice versa
+# 
+# # Scale 0 =< lor < 2 for net weights (used as a scale factor, so most -ve lor is weight 0
+# # so should not be represented as an edge)
+# # aor <- aor %>% mutate(net_weights = (aor$lor - min(aor$lor))*2/max(aor$lor - min(aor$lor)))
+# 
+# # Check on the lor histogram
+# fig2a <- ggplot(aor, aes(lor))  + 
+#   geom_histogram(aes(y = ..density..), binwidth = 0.25, colour = "black") + 
+#   stat_function(fun = dnorm, args = list(mean = mean(aor$lor), sd = sd(aor$lor)), colour = "green") +
+#   geom_vline(xintercept = 0, colour = "red") +
+#   xlim(-3, 6) +
+#   ylim(0.0, 0.4) +
+#   labs(title ="Figure 2a", x = "log(odds ratio)") 
+# plot(fig2a)
+# 
+# # Get a vertices list from the species names still in aor
+# fp <- aor %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
+# vertices <- fp %>% group_by(species) %>% summarise(count = n()) #nodes; vertices
+# rm(fp)
+# ## EDGE TRIMMING BY "VALUE"
+# 
+# aor <- aor %>% mutate(lor2 = lor^2)
+# # Ordered sequence of values to control edge removal
+# values <- aor %>%  select(lor2) %>% arrange(lor2) %>% filter(lor2 > 0.0) %>% distinct(lor2)
+# 
+# net1 <- graph_from_data_frame(d = aor, vertices = vertices, directed = F)
+# # l1 <- layout.fruchterman.reingold(net1)
+# # V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
+# V(net1)$size <- 1
+# # E(net1)$weight <- aor$net_weights
+# # E(net1)$width <- 0.5 * abs(aor$lor)
+# E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
+# #plot(net1, vertex.label=NA, layout = l1)
+# plot(net1, vertex.label=NA)
+# 
+# 
+# mods <- tibble(mod = rep(0.0, length(row.names(values))),
+#                edges = 0, 
+#                vertices = 0, 
+#                i = 0)
+# 
+# for (i in seq_along(row.names(values)))
+# {
+#   net2 <- delete_edges(net1, which(E(net1)$lor2 < values$lor2[i]))
+#   isolated <-  which(degree(net2)==0)
+#   net2 <-  delete.vertices(net2, isolated)
+#   mods$mod[i] <- modularity(cluster_infomap(net2))
+#   mods$edges[i] <- length(E(net2))
+#   mods$vertices[i] <- length(V(net2))
+#   mods$i[i] <- i
+# }
+# 
+# ggplot(mods, aes(i, mod)) +
+#   geom_point()
+# 
+# net_low <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[3000])])
+# im_low <- cluster_infomap(net_low)
+# modularity(im_low)
+# plot(im_low, net_low, vertex.label=NA)
+# 
+# net_high <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[3200])])
+# im_high <- cluster_infomap(net_high)
+# modularity(im_high)
+# plot(im_high, net_high, vertex.label=NA)
+# 
+# sink("communities im_low  2020-03-13.txt")
+# print(communities(im_low))
+# sink()
 
-fig2a <- ggplot(aor, aes(lor))  + 
-  geom_histogram(aes(y = ..density..), binwidth = 0.25, colour = "black") + 
-  stat_function(fun = dnorm, args = list(mean = mean(aor$lor), sd = sd(aor$lor)), colour = "green") +
-  geom_vline(xintercept = 0, colour = "red") +
-  xlim(-3, 6) +
-  ylim(0.0, 0.4) +
-  labs(title ="Figure 2a", x = "log(odds ratio)") 
-plot(fig2a)
 
-aor <- aor %>% mutate(net_weights = (aor$lor - min(aor$lor))*2/max(aor$lor - min(aor$lor)))
 
-fp <- aor %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
-fc <- fp %>% group_by(species) %>% summarise(count = n()) #nodes; vertices
-
-# net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
+### EDGE TRIMMING BY lor QUANTILES
+# net1 <- graph_from_data_frame(d = aor, vertices = vertices, directed = F)
 # l1 <- layout.fruchterman.reingold(net1)
 # # V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
 # V(net1)$size <- 1
@@ -209,63 +279,6 @@ fc <- fp %>% group_by(species) %>% summarise(count = n()) #nodes; vertices
 # im <- cluster_infomap(net3)
 # modularity(im)
 
-## EDGE TRIMMING BY "VALUE"
-
-aor <- aor %>% mutate(lor2 = lor^2)
-values <- aor %>%  select(lor2) %>% arrange(lor2) %>% filter(lor2 > 0.0) %>% distinct(lor2)
-
-net1 <- graph_from_data_frame(d = aor, vertices = fc, directed = F)
-l1 <- layout.fruchterman.reingold(net1)
-# V(net1)$size <- 10 * V(net1)$count/max(V(net1)$count)
-V(net1)$size <- 1
-E(net1)$weight <- aor$net_weights
-# E(net1)$width <- 0.5 * abs(aor$lor)
-# E(net1)$color <- ifelse(aor$lor > 0, "green", "grey")
-plot(net1, vertex.label=NA, layout = l1)
-
-
-mods <- tibble(mod = rep(0.0, length(row.names(values))),
-               edges = 0, 
-               vertices = 0, 
-               i = 0)
-
-for (i in seq_along(row.names(values)))
-{
-  net2 <- delete_edges(net1, which(E(net1)$lor2 < values$lor2[i]))
-  isolated <-  which(degree(net2)==0)
-  net2 <-  delete.vertices(net2, isolated)
-  mods$mod[i] <- modularity(cluster_infomap(net2))
-  mods$edges[i] <- length(E(net2))
-  mods$vertices[i] <- length(V(net2))
-  mods$i[i] <- i
-}
-
-ggplot(mods, aes(i, mod)) +
-  geom_point()
-
-net_low <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[2500])])
-im_low <- cluster_infomap(net_low)
-modularity(im_low)
-plot(im_low, net_low, vertex.label=NA)
-
-net_high <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[2850])])
-im_high <- cluster_infomap(net_high)
-modularity(im_high)
-plot(im_high, net_high, vertex.label=NA)
-
-# sink("communities im_low  2020-03-13.txt")
-# print(communities(im_low))
-# sink()
-
-net_super <- delete_edges(net1, E(net1)[which(E(net1)$lor2 < values$lor2[3020])])
-im_super <- cluster_infomap(net_super)
-modularity(im_super)
-plot(im_super, net_super, vertex.label=NA)
-
-compare(im_high, im_super, method = "vi")
-
-
-
 
 # ### Vertex trimming: Does not change modularity (stays at 0)
 # 
@@ -307,5 +320,43 @@ compare(im_high, im_super, method = "vi")
 # 
 # ggplot(v_mods, aes(i, vertices)) +
 #   geom_point()
+
+
+######### SOME NETWORK METRICS ORIGINALLY MADE ON G0
+# # Let's have a look at G0 before going any farther.
+# plot(G0, vertex.label=NA)
+# # And get some data about it
+# degG0 <- tibble(degree(G0))
+# vertices <- bind_cols(vertices, degG0) 
+# vertices <- vertices %>% rename(degree = "degree(G0)")
+# rm(degG0)
+# 
+# # Check on vertex degree histogram
+# p1 <- ggplot(vertices, aes(degree))  +
+#   geom_histogram() +
+#   labs(title ="Node degrees", x = "degree")
+# plot(p1)
+# 
+# hub_score_G0 <- tibble(hub_score(G0)$vector)
+# # The hub scores of the vertices are defined as the principal eigenvector of AAT,
+# # where A is the adjacency matrix of the graph.
+# vertices <- bind_cols(vertices, hub_score_G0)
+# vertices <- vertices %>% rename(hub_score = `hub_score(G0)$vector`)
+# 
+# # vertex_connectivity: the minimum number of vertices to remove to make the graph
+# # "not strongly connected".
+# vcG0 <- vertex_connectivity(G0)# =16
+# # Transitivity: "Transitivity measures the probability that 
+# # the adjacent vertices of a vertex are connected."
+# trans_G0 <- transitivity(G0, type = "global") # 0.632
+
+# del <- vertices %>% filter(hub_score > 0.7)
+# G1 <- delete_vertices(G0, del$species)
+# plot(G1, vertex.label=NA)
+# imG1 <- cluster_infomap(G1)
+# modularity(imG1)
+# transitivity(G1)
+# plot(imG1, G1, vertex.label=NA, main = "hub score threshold 0.7")
+
 
 
