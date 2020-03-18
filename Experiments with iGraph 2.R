@@ -56,11 +56,9 @@ GetTheData <-  function()
   dbDisconnectAll()
 }
 
-SetOne <- function(x, na.rm = T) (1)
-
 the_data <- GetTheData()
 
-# Make the stand (assembly) based occupancy matrix d2
+# Make the stand (assembly) based occupancy matrix site_occ. Start with d2:
 d2 <- (the_data %>% select(assembly_id, species_name)
        %>% group_by(assembly_id, species_name)
        %>% summarise(n=n())
@@ -70,6 +68,10 @@ d2 <- (the_data %>% select(assembly_id, species_name)
 # Replace anything numeric with 1, and any NA with 0
 d3 <- (d2 %>% select(-assembly_id) %>% replace(., !is.na(.), 1)
        %>% replace(., is.na(.), 0)) # Replace NAs with 0)
+# Insert a column with the stand IDs. I know that it is usual with occupancy
+# matrices to have the species as rows and sites as columns but as I intend
+# analysis by species (R analysis as opposed to Q) I find it easier for
+# the moment to think of the species in columns.
 cn <- colnames(d3)
 d3 <- (mutate(d3, stand = paste("S", as.character(d2$assembly_id), sep = "_"))
       %>% select(stand, cn)) #Re order columns so stand 1st
@@ -77,22 +79,28 @@ d3 <- (mutate(d3, stand = paste("S", as.character(d2$assembly_id), sep = "_"))
 site_occ <- d3
 rm(d2, d3)
 
+# Pairwise list of all species combinations (expand.grid useful)
 x <- colnames(site_occ)[2:length(colnames(site_occ))] # Remove the "stand" column name
-edges <- as_tibble(expand.grid(x, x))
-rm(x)
-edges <- (edges %>% rename(A = 1) 
-          %>% rename(B = 2)
-          %>% filter(A != B))
+e0 <- as_tibble(expand.grid(x, x))
+# e0 Includes B -> A as well as A -> B
+# Make a graph and simplify it to remove multiple edges
+G <- graph_from_data_frame(d = e0, vertices = x, directed = F)
+G <- simplify(G, edge.attr.comb = "first")
+edges <- as_tibble(as_data_frame(G, what="edges")) %>% rename(A = from, B = to)
+rm(x, e0, G)
 
+# Make provision for contingencies: cell names a,b,c,d
 edges$a <- 0
 edges$b <- 0
 edges$c <- 0
 edges$d <- 0
+# Get the contingency table entries a,b,c,d
 for (i in seq_along(row.names(edges)))
 {
-  e1 <- as.character(edges$A[i])
-  e2 <- as.character(edges$B[i])
-  jc <- site_occ %>% select(e1, e2) %>% rename(A = 1, B = 2)
+  e1 <- as.character(edges$A[i]) # First species name
+  e2 <- as.character(edges$B[i]) # Second species name
+  jc <- (site_occ %>% select(e1, e2) # Two vectors, 108 long
+                  %>% rename(A = 1, B = 2))
   jc <- jc %>% mutate(a = ifelse(A == 1 & B == 1, 1, 0))
   jc <- jc %>% mutate(b = ifelse(A == 1 & B == 0, 1, 0))
   jc <- jc %>% mutate(c = ifelse(A == 0 & B == 1, 1, 0))
@@ -113,7 +121,8 @@ edges <- (edges %>% filter(a > 0)
           %>% filter (b > 0) 
           %>% filter (c > 0)
           %>% filter (d > 0))      
-# So need to make a vertices list from edges.
+# So need to make a vertices list from edges. Can't just use the original
+# species list
 edge_pivot <- edges %>% select(A, B) %>% pivot_longer(cols = c(A,B), names_to = "origin", values_to = "species")
 vertices <- edge_pivot %>% group_by(species) %>% summarise(count = n()) %>% select(-count) #nodes; vertices
 rm(edge_pivot)
@@ -125,8 +134,8 @@ edges$lor <- 0
 edges$lor2 <- 0
 for (i in seq_along(row.names(edges)))
 {
-  s <- unlist(edges[i, 3:6])
-  ft <- fisher.test(matrix(s, nrow = 2, ncol = 2, byrow = T) ,alternative = "greater")
+  s <- unlist(edges[i, 3:6]) # a,b,c,d
+  ft <- fisher.test(matrix(s, nrow = 2, ncol = 2, byrow = T) ,alternative = "two.sided")
   edges[i, 7] <- ft$p.value
   edges[i, 8] <- ft$estimate            # or
   edges[i, 9] <- log(ft$estimate)       # lor
@@ -147,13 +156,50 @@ t.test(edges$lor, mu = 0) # p-value < 2.2e-16
 
 G0 <- graph_from_data_frame(d = edges, vertices = vertices, directed = F)
 l0 <- layout.fruchterman.reingold(G0, weights = edges$or)
-# E(G0)$weight <- edges$or
+E(G0)$weight <- edges$or
 plot(G0, layout = l0, vertex.label=NA)
+
 
 e1 <- edges %>% filter(p_val < 0.05)
 G1 <- graph_from_data_frame(d = e1, vertices = vertices, directed = F)
+E(G1)$color <- ifelse(e1$lor > 0, "green", "grey50")
+E(G1)$weight <- NA #e1$lor
+V(G1)$size = 1
+V(G1)$color <- "tomato2"
 isolated <-  which(degree(G1)==0)
 G1 <-  delete.vertices(G1, isolated)
-l1 <- layout.fruchterman.reingold(G1, weights = e1$or)
-plot(G1, layout = l1, vertex.label=NA)
+# l1 <- layout.fruchterman.reingold(G1) #, weights = e1$lor)
+plot(G1, vertex.label=NA)
+# plot(G1, layout = l1, vertex.label=NA)
+
+# Concentrate on the positive associations:
+e1a <-  e1 %>% filter(lor > 0) # Positive associations
+G1a <- graph_from_data_frame(d = e1a, vertices = vertices, directed = F)
+l1a <- layout.fruchterman.reingold(G1a, weights = e1a$lor)
+isolated <-  which(degree(G1a)==0)
+G1a <-  delete.vertices(G1a, isolated)
+E(G1a)$weight <- e1a$or
+plot(G1a, vertex.label=NA)
+h <- hub_score(G1a)$vector
+h_score <- tibble(species = names(h), score = h)
+inc_edges <- incident(G1a,  V(G1a)["Lathyrus_montanus"], mode="all")
+
+# Set colors to plot the selected edges.
+ecol <- rep("gray80", ecount(G1a))
+ecol[inc_edges] <- "orange"
+vcol <- rep("grey40", vcount(G1a))
+vcol[V(G1a)$name=="Lathyrus_montanus"] <- "gold"
+V(G1a)$size = degree(G1a)/5
+plot(im, G1a, layout = l1a, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
+ylim=c(-0.4, 0.4), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA,)
+
+# sink("im 2020-03-18.txt")
+# print(communities(im))
+# sink()
+
+G1b <- delete_edges(G1a, which(crossing(im, G1a) == T))
+plot(im, G1b, vertex.label=NA,)
+
+M1 <- delete_vertices(G1b, unlist(im[2:length(im)]))
+plot(M1, vertex.label = NA)
 
