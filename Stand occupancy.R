@@ -138,6 +138,7 @@ plt1 <- ggplot(edges, aes(lor))  +
 plot(plt1)
 t.test(edges$lor, mu = 0) # p-value < 2.2e-16
 
-#write_csv(site_occ, path = "stand occupancy.csv")
+# write_csv(site_occ, path = "stand occupancy.csv")
+# write_csv(edges, path = "edges.csv")
 
 # test <- read_csv("stand occupancy.csv")
