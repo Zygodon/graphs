@@ -55,61 +55,54 @@ ecol[inc_edges] <- "orange"
 vcol <- rep("grey40", vcount(G1a))
 vcol[V(G1a)$name=="Lathyrus_montanus"] <- "gold"
 V(G1a)$size = degree(G1a)/5
-#plot(G1a, layout = l1a, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
-#     ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a L_motanus")
 plot(G1a, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
      ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a L_montanus")
 
-# sink("im 2020-03-18.txt")
-# print(communities(im))
-# sink()
+im <- cluster_infomap(G1a)
+plot(im, G1a, vertex.label=NA, axes = F, rescale = T,
+     ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a infomap")
+
+modularity(im)
+
+# Keep communities with 5 or more members
+# https://stackoverflow.com/questions/51271730/how-to-remove-small-communities-using-igraph-in-r
+# hermidalc April 2019
+im_keep_ids <- as.numeric(names(sizes(im)[sizes(im) >= 5]))
+im_keep_v_idxs <- which(im$membership %in% im_keep_ids)
+
+G1a_sub <- induced_subgraph(G1a, V(G1a)[im_keep_v_idxs])
+# igraph has no direct functionality to subset community objects so hack it
+im_sub <- im
+im_sub$names <- im$names[im_keep_v_idxs]
+im_sub$membership <- im$membership[im_keep_v_idxs]
+im_sub$vcount <- length(im_sub$names)
+im_sub$modularity <- modularity(G1a_sub, im_sub$membership, E(G1a_sub)$weight)
+V(G1a_sub)$size = degree(G1a_sub)/2
+plot(im_sub, G1a_sub, vertex.label=NA, axes = F, rescale = T,
+     ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a_sub")
+modularity(im_sub)
+
 
 # Isolate the largest community, M1
-G1b <- delete_edges(G1a, which(crossing(im, G1a) == T))
-plot(im, G1b, vertex.label=NA,)
+# G1b <- delete_edges(G1a, which(crossing(im, G1a) == T))
+# plot(im, G1b, vertex.label=NA,)
+# 
+# M1 <- delete_vertices(G1b, unlist(im[2:length(im)]))
+# plot(M1, ylim=c(-0.4, 0.4), xlim=c(-0.4, 0.4), asp = 1, vertex.label = NA)
+# 
+# # The most linked-in vertices in M1
+# V(M1)[which(degree(M1) == max(degree(M1)))]
+# 
+# # Set colors to plot the selected edges.
+# inc_edges <- incident(M1,  V(M1)[which(degree(M1) == max(degree(M1)))], mode="all")
+# ecol <- rep("gray80", ecount(M1))
+# ecol[inc_edges] <- "orange"
+# vcol <- rep("grey40", vcount(M1))
+# vcol[which(degree(M1) == max(degree(M1)))] <- "gold"
+# V(M1)$size = degree(M1)/4
+# plot(M1, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
+#      ylim=c(-0.6, 0.2), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA,)
 
-M1 <- delete_vertices(G1b, unlist(im[2:length(im)]))
-plot(M1, ylim=c(-0.4, 0.4), xlim=c(-0.4, 0.4), asp = 1, vertex.label = NA)
-
-# The most linked-in vertices in M1
-V(M1)[which(degree(M1) == max(degree(M1)))]
-
-# Set colors to plot the selected edges.
-inc_edges <- incident(M1,  V(M1)[which(degree(M1) == max(degree(M1)))], mode="all")
-ecol <- rep("gray80", ecount(M1))
-ecol[inc_edges] <- "orange"
-vcol <- rep("grey40", vcount(M1))
-vcol[which(degree(M1) == max(degree(M1)))] <- "gold"
-V(M1)$size = degree(M1)/4
-plot(M1, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
-     ylim=c(-0.6, 0.2), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA,)
-
-# After positive association ... look at joint positive and negative.
-#Going back to G1
-
-im <- cluster_infomap(G1)
-modularity(im)
-plot(im, G1, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
-     ylim=c(-0.6, 0.2), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA,)
-
-# sink("im 2020-03-19.txt")
+# sink("im 2020-03-18.txt")
 # print(communities(im))
-# sink()
-
-# What happens if we look at only the negative associations?
-e1c <-  e1 %>% filter(lor < 0) # Negative associations
-G1c <- graph_from_data_frame(d = e1c, vertices = vertices, directed = F)
-l1c <- layout.fruchterman.reingold(G1c, weights = e1c$lor)
-isolated <-  which(degree(G1c)==0)
-G1c <-  delete.vertices(G1c, isolated)
-E(G1c)$weight <- e1c$or
-plot(G1c, vertex.label=NA, ylim=c(-0.6, 0.6), xlim=c(-0.6, 0.6), asp = 1)
-# h <- hub_score(G1a)$vector
-# h_score <- tibble(species = names(h), score = h)
-# inc_edges <- incident(G1a,  V(G1a)["Lathyrus_montanus"], mode="all")
-
-im_G1c <- cluster_infomap(G1c)
-modularity(im_G1c)
-# sink("im_G1c 2020-03-19.txt")
-# print(communities(im_G1c))
 # sink()
