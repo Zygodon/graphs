@@ -64,10 +64,10 @@ plot(im, G1a, vertex.label=NA, axes = F, rescale = T,
 
 modularity(im)
 
-# Keep communities with 5 or more members
+# Keep communities with 10 or more members
 # https://stackoverflow.com/questions/51271730/how-to-remove-small-communities-using-igraph-in-r
 # hermidalc April 2019
-im_keep_ids <- as.numeric(names(sizes(im)[sizes(im) >= 5]))
+im_keep_ids <- as.numeric(names(sizes(im)[sizes(im) >= 10]))
 im_keep_v_idxs <- which(im$membership %in% im_keep_ids)
 
 G1a_sub <- induced_subgraph(G1a, V(G1a)[im_keep_v_idxs])
@@ -79,30 +79,13 @@ im_sub$vcount <- length(im_sub$names)
 im_sub$modularity <- modularity(G1a_sub, im_sub$membership, E(G1a_sub)$weight)
 V(G1a_sub)$size = degree(G1a_sub)/2
 plot(im_sub, G1a_sub, vertex.label=NA, axes = F, rescale = T,
-     ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a_sub")
+     ylim=c(-1, 1), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a_sub")
 modularity(im_sub)
 
-
-# Isolate the largest community, M1
-# G1b <- delete_edges(G1a, which(crossing(im, G1a) == T))
-# plot(im, G1b, vertex.label=NA,)
-# 
-# M1 <- delete_vertices(G1b, unlist(im[2:length(im)]))
-# plot(M1, ylim=c(-0.4, 0.4), xlim=c(-0.4, 0.4), asp = 1, vertex.label = NA)
-# 
-# # The most linked-in vertices in M1
-# V(M1)[which(degree(M1) == max(degree(M1)))]
-# 
-# # Set colors to plot the selected edges.
-# inc_edges <- incident(M1,  V(M1)[which(degree(M1) == max(degree(M1)))], mode="all")
-# ecol <- rep("gray80", ecount(M1))
-# ecol[inc_edges] <- "orange"
-# vcol <- rep("grey40", vcount(M1))
-# vcol[which(degree(M1) == max(degree(M1)))] <- "gold"
-# V(M1)$size = degree(M1)/4
-# plot(M1, vertex.color=vcol, edge.color=ecol, vertex.label=NA, axes = F, rescale = T,
-#      ylim=c(-0.6, 0.2), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA,)
-
-# sink("im 2020-03-18.txt")
-# print(communities(im))
-# sink()
+# This gives 4 communities: attempt SBM
+e1a_sub <- as_tibble(as_data_frame(G1a_sub, what = c("edges")))
+v1a_sub <- as_tibble(as_data_frame(G1a_sub, what = c("vertices")))
+m <- tibble(membership(im_sub))
+v1a_sub <- bind_cols(v1a_sub, m) %>% rename(group = 3)
+rm(m)
+# Note v1a_sub vertex size = degree/2
