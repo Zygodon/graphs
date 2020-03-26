@@ -1,5 +1,7 @@
 library(tidyverse)
 library(igraph)
+library(ggraph)
+library("colorspace")
 
 site_occ <- read_csv("stand occupancy.csv")
 edges <- read_csv("edges.csv")
@@ -82,10 +84,36 @@ plot(im_sub, G1a_sub, vertex.label=NA, axes = F, rescale = T,
      ylim=c(-1, 1), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "G1a_sub")
 modularity(im_sub)
 
-# This gives 4 communities: attempt SBM
-e1a_sub <- as_tibble(as_data_frame(G1a_sub, what = c("edges")))
-v1a_sub <- as_tibble(as_data_frame(G1a_sub, what = c("vertices")))
-m <- tibble(membership(im_sub))
-v1a_sub <- bind_cols(v1a_sub, m) %>% rename(group = 3)
-rm(m)
-# Note v1a_sub vertex size = degree/2
+# Isolate between community and within community edges
+
+df <- as_data_frame(G1a_sub, what = "both")
+g <- graph_from_data_frame(df$edges, df$vertices, directed = F)
+plot(g, vertex.label=NA, main = "g")
+g_clust <- cluster_infomap(g)
+plot(g_clust, g, vertex.label=NA, axes = F, rescale = T,
+     ylim=c(-0.8, 0.8), xlim=c(-0.4, 0.4), asp = 1, vertex.label=NA, main = "g infomap")
+
+clusters <- tibble(cluster = g_clust$membership, species = g_clust$names)
+V(g)$community <- g_clust$membership
+q4 <- qualitative_hcl(4, palette = "Dark 3")
+V(g)$color <- q4[V(g)$community]
+
+a1 <- as.data.frame(get.edgelist(g))
+
+for (i in 1:length(E(g)))
+{
+  v1 <- a1$V1[i]
+  v2 <- a1$V2[i]
+  c1 <- inner_join(as_tibble(v1), clusters, by = c("value" = "species"))
+  c2 <- inner_join(as_tibble(v2), clusters, by = c("value" = "species"))
+  E(g)[i]$color <- ifelse(c1$cluster == c2$cluster, q4[c1$cluster], q4[4])
+}
+lo <- layout.fruchterman.reingold(g)
+plot(g, vertex.label=NA, layout = lo, main = "test")
+
+plt <- ggraph(g, layout=lo) + 
+  geom_edge_link0(aes(color=E(g)$color), width=0.6) +
+  geom_node_point(aes(color=V(g)$color), size=3)
+plot(plt) # Note edge colours incorrect
+
+
