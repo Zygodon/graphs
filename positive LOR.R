@@ -30,9 +30,9 @@ no0 <- G0 %>% activate(nodes) %>% as_tibble(.)
 lo <- layout_with_fr(G0)
 
 G0 %>% ggraph(layout = lo) + 
-  geom_edge_link(aes(colour = as.factor(community)), alpha = 0.6, show.legend = F) + 
+  geom_edge_link(aes(colour = as.factor(community)), alpha = 0.6, show.legend = F) +
   scale_edge_colour_brewer(palette = "Set1", na.value = "grey50",) +
-  geom_node_point(aes(colour = (community)), alpha = 0.4, size = 4) + 
+  geom_node_point(aes(colour = (community), size = degree), alpha = 0.8) +
   scale_colour_brewer(palette = "Set1", na.value = "grey50",) +
   ggtitle('G0') 
 
