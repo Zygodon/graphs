@@ -3,6 +3,8 @@ library(igraph)
 library(ggraph)
 library(tidygraph)
 library("colorspace")
+# library(visNetwork)
+library(networkD3)
 
 # site_occ <- read_csv("stand occupancy.csv")
 edges <- read_csv("edges.csv")
@@ -70,11 +72,26 @@ G1 %>% ggraph(layout = "fr") +
   scale_colour_brewer(palette = "Set1", na.value = "grey50",) +
   ggtitle('G1') 
 
-# Attempt to remove small modules
-G2 <- G1 %>% activate(nodes) %>% filter(as.numeric(community) <= 4)
-G2 %>% ggraph(layout = "fr") + 
+# Remove small modules
+G2 <- G1 %>% activate(nodes) %>% filter(as.numeric(community) <= 3)
+eg2 <- G2 %>% activate(edges) %>% as_tibble(.)
+no2 <- G2 %>% activate(nodes) %>% as_tibble(.)
+
+lg2 <- layout_with_fr(G2)
+
+G2 %>% ggraph(layout = lg2) + 
   geom_edge_link(aes(colour = lor), alpha = 1, show.legend = T) +
-  scale_edge_color_gradient(low = "yellow", high = "blue") +
-  geom_node_point(aes(colour = (community), size = degree), alpha = 0.8) +
+  scale_edge_color_gradient2(name = "log(odds ratio)", low = "darkmagenta", mid = "white", high = "green1") +
+  geom_node_point(aes(fill = community, size = degree), show.legend = F, shape = 21, alpha = 1) +
   scale_colour_brewer(palette = "Set1", na.value = "grey50",) +
-  ggtitle('G1') 
+  ggtitle('G2') +
+  theme_minimal() + th_no_axes( ) +
+  guides(fill = FALSE) +
+  guides(size = FALSE)
+
+# Convert to object suitable for networkD3
+G2_d3 <- igraph_to_networkD3(G2, what = "both",  group = no2$community)
+
+forceNetwork(Links = G2_d3$links, Nodes = G2_d3$nodes, 
+             Source = 'source', Target = 'target', 
+             NodeID = 'name', Group = 'group')
