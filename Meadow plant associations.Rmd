@@ -1,18 +1,22 @@
 ---
-title: "The River Ouse Project: an exploration of meadow plant associations March 2020"
-output: html_notebook
+title: 'The River Ouse Project: an exploration of meadow plant associations.'
+output:
+  html_notebook: default
+  html_document:
+  df_print: paged
+  pdf_document: default
 ---
-# INTRODUCTION
+### INTRODUCTION
 This is a minimal account of my activity over the last few weeks (partly during the enforced Corona virus lockdown). I present an overview of my current approach with little explanation and no justification, both of which will have to come later.
 
 I've extracted data from the Meadows data base and looked for inter specific associations, independent of our NVC scores; that is, I'm looking for objective clusters in the data, irrespective of any preconceived ideas about what "ought" to be there. My extracted data includes all the stands (assemblies) that were sampled with just five, 2m x 2m quadrats.
 
-# METHOD
+### METHOD
 Pairwise species associations are expressed as log(odds ratio) - LOR - and their significance estimated using Fisher's Exact Test (which, in R, has the added benefit of spinning off an Expectation Maximisation estimate of the odds ratio).
 
 Dependencies amongst clusters of mutually associated species are investigated using graph-theoretic community detection algorithms. I explored several, and found that "cluster_leading_eigen" gave what I judge to be the most useful result. The resulting communities are visualised with a hairball diagam.
 
-# RESULTS
+### RESULTS
 After removing invalid values for the odds ratio there are 5749 species pairs in the current data. The log(odds ratio) is normally distributed (Figure 1) with mean 0.54 and standard deviation 1.24 which is significantly different from 0 mean (p< 2.2e-16). I conclude that there are more positively associated pairs in the data than there are negatively associated pairs.
 ![Figure 1. Log(odds ratio).](LOR histogram.png)
 
@@ -30,14 +34,17 @@ cle_clusters[,4] <- as.factor(cle_clusters[,4])
 datatable(cle_clusters[,c(2, 4)], caption = "Table 1. Community membership", filter = "top")
 ```
 
-# DISCUSSION
+### DISCUSSION
 The ecologists on the team will want to know (as I do) whether these groupings have any ecological meaning. Your comments welcome! I'm not really qualified to tell, but it rather looks as though community 1 is kind of central MG5-ish, 2 is on the wet side (all the Juncus species), and 3 contains several plants on the acid side e.g. Danthonia. But there will be lots of overlap and probably some unexpected bedfellows. Ultimately it's the ecological meaning that matters, and there is plenty of investigation to do here.
 
-Methodologically, this is still very much the data exploration stage. I need to work on establishing the reality of the supposed communities given the variability in the data. There's a technique called Stochastic Block Model (SBM) that appears to be suited these kind of graph-theoretical results. That's my next call, also examining and as far as I can eliminating the arbitrary decisions made here (as an example, taking p<0.05 as a threshold for rejecting correlations as "significant" doesn't make much sense in this context).
+Methodologically, this is still very much the data exploration stage. I need to work on establishing the reality of the supposed communities given the variability in the data. There's a technique called Stochastic Block Model (SBM) that appears to be suited these kind of graph-theoretical results. That's my next call, also I want to eliminate the arbitrary decisions made here (as an example, taking p<0.05 as a threshold for rejecting correlations as "significant" doesn't make much sense in this context).
 
 It might be worth mentioning here that the graph-theoretical community detection algorithms work a bit differently than the more familiar statistical clustering methods like k-means, etc. The more familiar algorithms use some concept of distance (obverse, closeness) such as Euclidean distance or Jaccard distance to identify which items are in some sense "close". The graph theory measures don't primarily use that. Instead, they look at the density of connections. The size of the nodes in Figure 1 is determined by their "degree", that is, the number of connections that each one makes. Groups of nodes (species, in our case) that are densely connected, with relatively few connections going outside the group, are candidate communities. With some of the algorithms, including CLE, it is possible to include "weights" on the links between nodes, which can introduce a kind of "distance" measure into the clustering decisions. I've tried it using a scaled version of log(odds ratio)[^1]  but found (a) it complicates the issue; and (b) it tends to find what I think (with no very good reason) are too many clusters.
 
 Finally, I have ideas about how to examine the relationship between these as you might say "naive" communities with the expectations of the NVC, which will be interesting.
 
+John Pilkington 2020-04-02
 
-[^1]: Seeing that the LOR is not far from ideal normal data, I used the probability density function p(lor, mu, sd) - in R speak - where mu is the mean and sd the standard deviation given above. The result is a weight in [0..1]; negative weights not allowed in the clustering algorithms.
+j.b.pilkington@gmail.com
+
+[^1]: Seeing that the LOR is not far from ideal normal distribution, I used the probability density function p(lor, mu, sd) - in R speak - where mu is the mean and sd the standard deviation given above. The result is a weight in [0..1]; negative weights not allowed in the clustering algorithms.
