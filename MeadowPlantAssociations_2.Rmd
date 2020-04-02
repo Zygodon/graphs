@@ -1,8 +1,8 @@
 ---
 title: 'The River Ouse Project: an exploration of meadow plant associations.'
 output:
-  word_document: default
   html_document: null
+  word_document: default
   html_notebook: default
   pdf_document: default
   df_print: paged
@@ -28,7 +28,7 @@ After removing invalid values for the odds ratio there are 5749 species pairs in
 
 At this point in the analysis there are 146 species, 5749 odds-ratio estimates of a maximum, if the graph were fully connected of 146 * 145 = 21170. The difference is accounted for by the removal of invalid odds ratios either because of too many or too few occurrences of at least one member of the pair. To simplify this analysis, I made two arbitrary decisions. In what follows, I have (1) removed all species pairs for which the Fisher test p >= 0.05 (that is, I have removed the weak correlations); and (2) I have removed the negative correlations, log(odds ratio) < 0. So here, I am examining just the strong positive correlations between species. What remains is 79 species with 488 connections.
 
-The cluster_leading_eigen (CLE) algorithm consistently finds three communities of mutually connected species (Figure 2). This is more conservative than other algorithms I have tested, which in general find similar large communities but also tend to split off three or four extra smaller communities. Modularity is an arbitrary measure of the strength of community association. As a rule of thumb it is said that modularity > 3.0 indicates meaningful organisation; the modularity value for Figure 1 is 0.35.
+The cluster_leading_eigen (CLE) algorithm consistently finds three communities of mutually connected species (Figure 2). This is more conservative than other algorithms I have tested, which in general find similar large communities but also tend to split off three or four extra smaller communities. Modularity is an arbitrary measure of the strength of community association. As a rule of thumb it is said that modularity > 0.3 indicates meaningful organisation; the modularity value for Figure 1 is 0.35.
 
 ![Figure 2.](G0 Cluster leading eigen.png)
 
