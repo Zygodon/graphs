@@ -42,12 +42,25 @@ eg0 <- G0 %>% activate(edges) %>% as_tibble(.)
 no0 <- G0 %>% activate(nodes) %>% as_tibble(.)
 
 ggraph(G0, 'matrix', sort.by = node_rank_leafsort()) + 
+  # ggraph(G0, 'matrix', sort.by = node_rank_spectral()) + 
   geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) + 
   theme(legend.position = 'bottom')
 
+# Sort nodes by SBM community prior to looking at block matrix
+G1 <- G0 %>% activate(nodes) %>% arrange(sbm_comm)
+sp <- V(G1)$species
 
-lo <- layout_with_fr(G0)
-G0 %>% activate(edges) %>% ggraph(layout = lo) + 
+ggraph(G1, 'matrix', sort.by = node_rank_visual()) + 
+  geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) + 
+  scale_y_discrete(label = layout$species) +
+  # theme(legend.position = 'bottom') 
+  theme_bw() + theme(axis.text.y = element_text(size = 0.1))
+
+n1 <- as_tibble(G1 %>% activate(nodes)) 
+  
+
+lo <- layout_with_fr(G1)
+G1 %>% activate(edges) %>% ggraph(layout = lo) + 
   geom_edge_link(colour = "black", alpha = 0.2) +
   geom_node_point(aes(fill = sbm_comm, size = degree), show.legend = T, shape = 21, alpha = 1) +
   scale_fill_brewer(palette = "Dark2", na.value = "grey50",) +
