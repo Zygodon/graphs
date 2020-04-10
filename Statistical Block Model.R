@@ -51,29 +51,38 @@ ggraph(G0, 'matrix', sort.by = node_rank_leafsort()) +
 
 # Sort nodes by SBM community prior to looking at block matrix
 G1 <- G0 %>% activate(nodes) %>% arrange(sbm_comm)
-sp <- V(G1)$species
+
+# Hairball
+sp <- V(G1)$name
 lo <- layout_with_fr(G1)
 G1 %>% activate(edges) %>% ggraph(layout = lo) + 
   geom_edge_link(colour = "black", alpha = 0.2) +
   geom_node_point(aes(fill = sbm_comm, size = degree), show.legend = T, shape = 21, alpha = 1) +
-  scale_fill_brewer(palette = "Dark2", na.value = "grey50",) +
+  scale_fill_brewer(palette = "Dark2", na.value = "grey50") +
   ggtitle('G0 SBM Bernouilli, no weights, positive LOR') +
   theme_minimal() + th_no_axes( ) +
   guides(fill = guide_legend(override.aes = list(size=5))) # +
 
+# Matrix
 # This plot shows edges between communities as NA
-# But I cannot get species names in margin
-ggraph(G1, 'matrix', sort.by = node_rank_visual()) + 
+pal <- brewer.pal(6, "Dark2")
+axis.colour <- plyr::mapvalues(no1$sbm_comm, from=c(1:length(levels(no1$sbm_comm))), to=pal)
+
+ggraph(G1, 'matrix', sort.by = NULL) + 
   geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) +
-  scale_y_reverse(breaks = seq(1, 79, by = 1), labels = no1$name, "to") +
-  scale_x_continuous(breaks = seq(1, 79, by = 1), labels = no1$name, "from") +
+  guides(edge_colour = guide_legend(title = "community", override.aes = list(edge_size = 4))) +
+  scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50") +
+  scale_y_reverse(breaks = seq(1, 79, by = 1), labels = no1$name, "from") +
+  scale_x_continuous(breaks = seq(1, 79, by = 1), labels = no1$name, "to") +
   coord_fixed() +
   theme_bw() +
   theme(axis.text.x = element_text(size = 4.0, angle = 90)) +
   theme(axis.text.y = element_text(size = 4.0)) +
+  theme(axis.text.y = element_text(colour=axis.colour)) +
+  theme(axis.text.x = element_text(colour=axis.colour)) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        panel.background = element_blank(), axis.line = element_line(colour = "black"))
-  #theme(panel.background = element_rect(fill = "white", colour = "white"))
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  ggtitle('G1 SBM Bernouilli, no weights, positive LOR') 
 
 ggsave("SBM_1.jpg", width = 20, height = 20, units = "cm")
 
