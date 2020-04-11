@@ -66,23 +66,32 @@ G1 %>% activate(edges) %>% ggraph(layout = lo) +
 # Matrix
 # This plot shows edges between communities as NA
 pal <- brewer.pal(6, "Dark2")
-axis.colour <- plyr::mapvalues(no1$sbm_comm, from=c(1:length(levels(no1$sbm_comm))), to=pal)
+no1 <- G1 %>% activate(nodes) %>% as_tibble(.)
+no1 <- no1 %>% mutate(axis_colour = pal[sbm_comm])
+
+text_x <- length(row.names(no1)) - 10
+text_y <-  -2
+
+hvlines <- no1 %>% group_by(sbm_comm) %>% summarise(n = n()) %>% mutate(cs = cumsum(n))
+
 
 ggraph(G1, 'matrix', sort.by = NULL) + 
   geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) +
   guides(edge_colour = guide_legend(title = "community", override.aes = list(edge_size = 4))) +
+  geom_vline(yintercept = hvlines$cs) +
+  geom_hline(yintercept = hvlines$cs) +
   scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50") +
   scale_y_reverse(breaks = seq(1, 79, by = 1), labels = no1$name, "from") +
   scale_x_continuous(breaks = seq(1, 79, by = 1), labels = no1$name, "to") +
   coord_fixed() +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 4.0, angle = 90)) +
-  theme(axis.text.y = element_text(size = 4.0)) +
-  theme(axis.text.y = element_text(colour=axis.colour)) +
-  theme(axis.text.x = element_text(colour=axis.colour)) +
+  theme(axis.text.x = element_text(size = 4.5, angle = 90, colour = no1$axis_colour, face = 'bold')) +
+  theme(axis.text.y = element_text(size = 4.5, colour = no1$axis_colour, face = 'bold')) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
-  ggtitle('G1 SBM Bernouilli, no weights, positive LOR') 
+  ggtitle('G1 SBM Bernouilli, no weights, positive LOR') +
+  annotate("text", label = paste("ICL = ", as.integer(max(my_model$ICL))), 
+           x = text_x, y = text_y, size = 3, colour = "black")
 
 ggsave("SBM_1.jpg", width = 20, height = 20, units = "cm")
 
