@@ -72,20 +72,20 @@ no1 <- no1 %>% mutate(axis_colour = pal[sbm_comm])
 text_x <- length(row.names(no1)) - 10
 text_y <-  -2
 
-hvlines <- no1 %>% group_by(sbm_comm) %>% summarise(n = n()) %>% mutate(cs = cumsum(n))
-
+hvlines <- no1 %>% group_by(sbm_comm) %>% summarise(n = n()) %>% mutate(cs = cumsum(n) + 0.5)
 
 ggraph(G1, 'matrix', sort.by = NULL) + 
   geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) +
   guides(edge_colour = guide_legend(title = "community", override.aes = list(edge_size = 4))) +
-  geom_vline(yintercept = hvlines$cs) +
-  geom_hline(yintercept = hvlines$cs) +
+  geom_vline(xintercept = hvlines$cs, alpha = 0.5, colour = "grey") +
+  geom_hline(yintercept = hvlines$cs, alpha = 0.5, colour = "grey") +
   scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50") +
   scale_y_reverse(breaks = seq(1, 79, by = 1), labels = no1$name, "from") +
   scale_x_continuous(breaks = seq(1, 79, by = 1), labels = no1$name, "to") +
   coord_fixed() +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 4.5, angle = 90, colour = no1$axis_colour, face = 'bold')) +
+  theme(axis.text.x = element_text(size = 4.5, angle = 90, colour = no1$axis_colour, 
+                                   face = 'bold', hjust = 1)) +
   theme(axis.text.y = element_text(size = 4.5, colour = no1$axis_colour, face = 'bold')) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
