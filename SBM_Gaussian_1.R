@@ -95,6 +95,6 @@ ggraph(G0, 'matrix', sort.by = NULL) +
   annotate("text", label = paste("ICL = ", as.integer(max(my_model$ICL))), 
            x = text_x, y = text_y, size = 3, colour = "black")
 
-# lggsave("SBM_Bernouilli_2.jpg", width = 20, height = 20, units = "cm")
+# ggsave("SBM_Gaussian_1.jpg", width = 20, height = 20, units = "cm")
 
   
