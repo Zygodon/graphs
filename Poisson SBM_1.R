@@ -93,12 +93,16 @@ G <- graph_from_data_frame(d = e0, vertices = x, directed = F)
 G <- simplify(G, edge.attr.comb = "first")
 edges <- as_tibble(as_data_frame(G, what="edges"))
 nodes <- as_tibble(as_data_frame(G, what="vertices"))
-# rm(x, e0, G)
+rm(x, e0, G)
 
 edges$a <- 0
-
+edges$b <- 0
+edges$c <- 0
+edges$d <-  0
+edges$p_val <-  0
+edges$or <- 0
+edges$lor <- 0
 pb <- txtProgressBar(min=0, max=length(row.names(edges)))
-
 for (i in seq_along(row.names(edges)))
 {
   e1 <- as.character(edges$from[i]) # First species name
@@ -107,21 +111,83 @@ for (i in seq_along(row.names(edges)))
          %>% rename(from = 1, to = 2))
   t <- table(jc$from, jc$to)
   if((0 %in% t) | sum(dim(t)) < 4){
-    edges$a[i] <- 0 #NA
+    edges$p_val[i] <- NA
+    edges$or[i] <- NA
+    edges$lor[i] <- NA
   } else {
+    ft <- fisher.test(t, alternative = "two.sided")
     edges$a[i] <- t[2,2]
+    edges$b[i] <- t[2,1]
+    edges$c[i] <- t[1,2]
+    edges$d[i] <- t[1,1]
+    edges$p_val[i] <- ft$p.value
+    edges$or[i] <- ft$estimate
+    edges$lor[i] <- log(ft$estimate)
   }
   setTxtProgressBar(pb, i)
 } # end for
 close(pb)
+rm(i, t, e1, e2, jc, ft, pb)
+e0 <- edges %>% filter(p_val < 0.05) %>% filter(lor > 0)
+G0 <- graph_from_data_frame(d = e0, vertices = nodes, directed = F)
 
-rm(i, t, e1, e2, jc, pb)
+# Hairball
+G1 <-  as_tbl_graph(G0)
+# Remove isolated nodes.
+G1 <- G1 %>% activate(nodes) %>% mutate(degree = degree(G1)) %>% filter(degree > 0)
+G1 %>% activate(edges) %>% ggraph(layout = layout.fruchterman.reingold(G1)) + 
+  geom_edge_link(colour = "black", alpha = 0.2) +
+  geom_node_point(shape = 21, alpha = 1) +
+  ggtitle('G1 SBM Poisson') +
+  theme_minimal()
 
-G0 <- graph_from_data_frame(d = edges, vertices = nodes, directed = F)
-M <- as_adjacency_matrix(G0, type = "both", attr = "a", edges = FALSE, names = F, sparse = F)
-
+M <- as_adjacency_matrix(G1, type = "both", attr = "a", edges = FALSE, names = F, sparse = F)
 # Blockmodel Poisson
 my_model <- BM_poisson("SBM",M )
 my_model$estimate()
 which.max(my_model$ICL)
+# Get memberships
+mmZ <- my_model$memberships[[which.max(my_model$ICL)]]$Z
+sbm_comms <- apply(mmZ, 1, which.max)
+# Label nodes by community
+G1 <-(G1 %>% activate(nodes) 
+      %>% mutate(sbm_comm = as.factor(sbm_comms)))
+# Identify edges WITHIN communities
+G1 <- (G1 %>% activate(edges)
+       %>% mutate(sbm_comm = ifelse(.N()$sbm_comm[from] == .N()$sbm_comm[to], .N()$sbm_comm[from], NA)))
+# Sort nodes by SBM community prior to looking at block matrix
+G1 <- G1 %>% activate(nodes) %>% arrange(sbm_comm)
+eg1 <- G1 %>% activate(edges) %>% as_tibble(.)
+no1 <- G1 %>% activate(nodes) %>% as_tibble(.)
+
+# Matrix
+# This plot shows edges between communities as NA
+pal <- brewer.pal(25, "Dark2")
+no1 <- no1 %>% mutate(axis_colour = pal[sbm_comm])
+
+text_x <- length(row.names(no1)) - 10
+text_y <-  -2
+
+hvlines <- no1 %>% group_by(sbm_comm) %>% summarise(n = n()) %>% mutate(cs = cumsum(n) + 0.5)
+
+ggraph(G1, 'matrix', sort.by = NULL) + 
+  geom_edge_point(aes(colour = as.factor(sbm_comm)), mirror = TRUE) +
+  guides(edge_colour = guide_legend(title = "community", override.aes = list(edge_size = 4))) +
+  geom_vline(xintercept = hvlines$cs, alpha = 0.5, colour = "grey") +
+  geom_hline(yintercept = hvlines$cs, alpha = 0.5, colour = "grey") +
+  scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50") +
+  scale_y_reverse(breaks = seq(1, 135, by = 1), labels = no1$name, "from") +
+  scale_x_continuous(breaks = seq(1, 135, by = 1), labels = no1$name, "to") +
+  coord_fixed() +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 4.5, angle = 90, colour = no1$axis_colour, 
+                                   face = 'bold', hjust = 1)) +
+  theme(axis.text.y = element_text(size = 4.5, colour = no1$axis_colour, face = 'bold')) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  ggtitle('G1 SBM Poisson, no weights, positive LOR') +
+  annotate("text", label = paste("ICL = ", as.integer(max(my_model$ICL))), 
+           x = text_x, y = text_y, size = 3, colour = "black")
+
+ggsave("SBM_Poisson_1.jpg", width = 20, height = 20, units = "cm")
 
