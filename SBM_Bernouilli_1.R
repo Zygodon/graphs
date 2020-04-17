@@ -7,6 +7,37 @@ library(tidygraph)
 library(RColorBrewer)
 library(blockmodels)
 
+# FUNCTIONS 
+posxy <-  function(hvlines, comms_order)
+{
+  k <- length(hvlines)
+  locs <- c(0, hvlines)
+  # ys <- matrix(rep(0, 4*k), 2*k, 2)         # Always 4 corners to a rectangle
+  ys <- matrix(rep(0, 2*length(locs)), length(locs), 2)         # Always 4 corners to a rectangle
+  # for(i in 1:4) 
+  for(i in 1:length(locs)) 
+  {
+    ys[i,] <- rep(locs[i], 2) # y coords top and bottom hvlines
+  }
+  y2 <- matrix(rep(0, 4 * k), k, 4)       # matrix, zeros
+  # Fill y2
+  for (i in 1:k)
+  {
+    y2[i,] <- c(ys[i,], ys[i + 1,]) # y coords for each group
+  }
+  x2 <- y2[, c(1,4,3,2)]                  # Swap columns 2, 4
+  y3 <- as.vector(t(y2))
+  x3 <- as.vector(t(x2))
+  
+  pos <- data.frame(
+    comm = rep(comms_order, each = 4),
+    x = x3,
+    y = y3)
+  return(pos)
+}
+
+# MAIN
+
 # Edges stored in file. See Stand occupancy.R for code
 # Key: A, species-from; B, species-to; a,b,c,d, entries in the contingency tabel
 # p_val, significance level, Fisher's Exact Text for association;
@@ -92,16 +123,22 @@ hvlines <- (no0 %>% group_by(sbm_comm)
             %>% summarise(n = n())
             %>% arrange(desc(n))
             %>% mutate(cs = cumsum(n) + 0.5))
+# Rectangles
+rectangles <- posxy(hvlines$cs, hvlines$sbm_comm)
 
 ggraph(G0, 'matrix', sort.by = NULL) + 
+  geom_polygon(data = rectangles, aes(x = x, y = y, fill = comm, group = comm), alpha = 0.2) +
+  scale_fill_brewer(palette = "Dark2", na.value = "grey50") +
+  guides(fill = guide_legend(title = "community", override.aes = list(alpha = 1))) +
   geom_edge_point(aes(colour = as.factor(sbm_comm), size = a, alpha = lor), mirror = TRUE) +
+  guides(colour = FALSE) + #No guide for edge point colour
   geom_edge_point(edge_shape = 3, edge_size = 0.1, edge_alpha = 0.5, mirror = TRUE) +
-  guides(edge_colour = guide_legend(title = "community", override.aes = list(edge_size = 4))) +
   guides(edge_alpha = guide_legend(title = "log(odds ratio)", override.aes = list(edge_size = 4))) +
-  guides(edge_size = guide_legend(title = "edge count")) +
+  guides(edge_size = guide_legend(title = "instances")) +
   geom_vline(xintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
   geom_hline(yintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
-  scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50") +
+  scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50", guide = F) +
+  # scale_edge_alpha(trans = 'reverse') + # Reverse the alpha scale for negative LOR
   scale_y_reverse(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "from") +
   scale_x_continuous(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "to") +
   coord_fixed() +
@@ -112,7 +149,7 @@ ggraph(G0, 'matrix', sort.by = NULL) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
   theme(legend.box = "vertical") +
-  ggtitle('SBM Bernouilli') +
+  ggtitle('SBM Bernouilli positive LOR') +
   annotate("text", 
            label = txt, 
            x = text_x, 
