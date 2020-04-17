@@ -92,7 +92,7 @@ lo <- layout_with_fr(G0)
 G0 %>% activate(edges) %>% ggraph(layout = lo) + 
   geom_edge_link(colour = "black", alpha = 0.2) +
   geom_node_point(aes(fill = sbm_comm, size = degree), show.legend = T, shape = 21, alpha = 1) +
-  scale_fill_brewer(palette = "Dark2", na.value = "grey50") +
+  scale_fill_brewer(palette = "Set1", na.value = "grey50") +
   ggtitle('SBM Bernouilli negative LOR') +
   theme_minimal() + th_no_axes( ) +
   guides(fill = guide_legend(override.aes = list(size=5))) 
@@ -111,7 +111,7 @@ eg0 <- G0 %>% activate(edges) %>% as_tibble(.)
 
 # Matrix
 # This plot shows edges between communities as NA
-pal <- brewer.pal(model, "Dark2") # model: the selected SBM
+pal <- brewer.pal(model, "Set1") # model: the selected SBM
 no0 <- no0 %>% mutate(axis_colour = pal[sbm_comm])
 # X, Y coordinates for text label reporting ICL
 text_x <- length(row.names(no0)) - 10
@@ -130,7 +130,7 @@ rectangles <- posxy(hvlines$cs, hvlines$sbm_comm)
 
 ggraph(G0, 'matrix', sort.by = NULL) + 
   geom_polygon(data = rectangles, aes(x = x, y = y, fill = comm, group = comm), alpha = 0.2) +
-  scale_fill_brewer(palette = "Dark2", na.value = "grey50") +
+  scale_fill_brewer(palette = "Set1", na.value = "grey50") +
   guides(fill = guide_legend(title = "anti_community", override.aes = list(alpha = 1))) +
   geom_edge_point(aes(colour = as.factor(sbm_comm), size = a, alpha = lor), mirror = TRUE) +
   guides(colour = FALSE) + #No guide for edge point colour
@@ -139,7 +139,7 @@ ggraph(G0, 'matrix', sort.by = NULL) +
   guides(edge_size = guide_legend(title = "instances")) +
   geom_vline(xintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
   geom_hline(yintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
-  scale_edge_colour_brewer(palette = "Dark2", na.value = "grey50", guide = F) +
+  scale_edge_colour_brewer(palette = "Set1", na.value = "grey50", guide = F) +
   scale_edge_alpha(trans = 'reverse') + # Reverse the alpha scale for negative LOR
   scale_y_reverse(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "from") +
   scale_x_continuous(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "to") +
