@@ -1,5 +1,6 @@
 # STATISTICAL BLOCK MODEL USING BERNOUILLI/BINOMIAL DISTRIBUTION 
 # ON GRAPH EDGES.
+
 library(tidyverse)
 library(igraph)
 library(ggraph)

@@ -48,8 +48,10 @@ edges <- read_csv("edges.csv")
 vertices <- as_tibble(unique(unlist(c(edges$A, edges$B), " ")))
 
 # Plot parameters, show in block matrix plot text
-p_lim <- 0.05
-deg <- 2
+# p_lim <- 0.05
+p_lim <- 1
+deg <- 0 #2
+text_size = 4
 
 # G0: the basic graph
 G0 <- (tbl_graph(nodes = vertices, edges = edges, directed = F)
@@ -127,27 +129,31 @@ hvlines <- (no0 %>% group_by(sbm_comm)
             %>% mutate(cs = cumsum(n) + 0.5))
 # Rectangles
 rectangles <- posxy(hvlines$cs, hvlines$sbm_comm)
+pal <- brewer.pal(7, "Set1")
+# In case some anti-communities have no members (only happens with negative lor)
+pal1 <- pal[as.numeric(levels(as.factor(eg0$sbm_comm)))]
 
 ggraph(G0, 'matrix', sort.by = NULL) + 
-  geom_polygon(data = rectangles, aes(x = x, y = y, fill = comm, group = comm), alpha = 0.2) +
-  scale_fill_brewer(palette = "Set1", na.value = "grey50") +
+  geom_polygon(data = rectangles, aes(x = x, y = y, fill = as.factor(comm), group = comm), alpha = 0.2) +
+  scale_fill_brewer(palette = "Set1") +
   guides(fill = guide_legend(title = "anti_community", override.aes = list(alpha = 1))) +
   geom_edge_point(aes(colour = as.factor(sbm_comm), size = a, alpha = lor), mirror = TRUE) +
+  #scale_edge_colour_brewer(palette = "Set1", na.value = "grey50", guide = F) +
+  scale_edge_colour_manual(values = pal1, na.value = "grey50", guide = F) +
   guides(colour = FALSE) + #No guide for edge point colour
   geom_edge_point(edge_shape = 3, edge_size = 0.1, edge_alpha = 0.5, mirror = TRUE) +
   guides(edge_alpha = guide_legend(title = "log(odds ratio)", override.aes = list(edge_size = 4))) +
   guides(edge_size = guide_legend(title = "instances")) +
   geom_vline(xintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
   geom_hline(yintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
-  scale_edge_colour_brewer(palette = "Set1", na.value = "grey50", guide = F) +
   scale_edge_alpha(trans = 'reverse') + # Reverse the alpha scale for negative LOR
   scale_y_reverse(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "from") +
   scale_x_continuous(breaks = seq(1, length(row.names(no0)), by = 1), labels = no0$value, "to") +
   coord_fixed() +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 8, angle = 90, colour = no0$axis_colour, 
+  theme(axis.text.x = element_text(size = text_size, angle = 90, colour = no0$axis_colour, 
                                    face = 'bold', hjust = 1)) +
-  theme(axis.text.y = element_text(size = 8, colour = no0$axis_colour, face = 'bold')) +
+  theme(axis.text.y = element_text(size = text_size, colour = no0$axis_colour, face = 'bold')) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
   theme(legend.box = "vertical") +
@@ -160,7 +166,3 @@ ggraph(G0, 'matrix', sort.by = NULL) +
            colour = "black")
 
 # ggsave("SBM_Bernouilli_neg.jpg", width = 20, height = 20, units = "cm")
-
-
-
-
