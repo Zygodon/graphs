@@ -94,6 +94,43 @@ HitsXY <- function(d, X, Y)
   return(retval)
 }
 
+
+# Return phi statistic (sqrt(chi^2/n)) group by quadrat or assembly
+# d: assembly_data or quadrat_data
+PhiXY <- function(d, X, Y)
+{
+  d <- d %>% rename(id = 1)
+  Xs <- d %>% filter(species_name == X)
+  Ys <- d %>% filter(species_name == Y)
+  # Get all the assemblies/quadrats, including ones with neither X nor Y
+  trials <- d %>% distinct(id) 
+  
+  binom_dat <- left_join(trials, Xs, by = "id") %>% left_join(Ys, by = "id")
+  colnames(binom_dat) <- c("id", "X", "Y")
+  binom_dat <- (binom_dat %>% mutate(X1 = as.numeric(factor(X)))
+                %>% mutate(Y1 = as.numeric(factor(Y)))
+                %>% replace_na(list(X1=0, Y1=0))
+                %>% select(id, X1, Y1)
+                %>% rename(X = X1, Y = Y1))
+  binom_dat <- (binom_dat %>% mutate(X1Y1 = as.numeric((X==1) & (Y==1)))
+                %>% mutate(X1Y0 = as.numeric((X==1) & (Y==0)))
+                %>% mutate(X0Y1 = as.numeric((X==0) & (Y==1)))
+                %>% mutate(X0Y0 = as.numeric((X==0) & (Y==0))))
+  
+  cs <- colSums(binom_dat)
+  # Use 2P(x < -|log(or)|/lse) : 2*pnorm(-abs(log(or))/se)
+  # lor <- log((cs[4]*cs[7])/(cs[5]*cs[6]))
+  # lse <- sqrt((1/cs[4]) + (1/cs[5]) + (1/cs[6] + (1/cs[7])))
+  # p_val <- 2*pnorm(-abs(lor/lse))
+  # k <- cs[4] # hits, X1Y1 ie both together in same quadrat/assembly
+  n <- unlist(summarise(trials, n=n()))
+  retval <- c(k, n, p_val)
+  names(retval) <- c("hits", "trials", "p_val")
+  return(retval)
+}
+
+
+
 QuadratCount =function(d, q_id) #Return the quadrat count of the assembly
 # to which the quadrat belongs. d: the_data
 {
@@ -148,12 +185,14 @@ for (i in 1:length(edges[,1]))
 }
 
 edges <- bind_cols(edges, xy)
-edges <- edges %>% filter(qp_value < 0.01)
+# edges <- edges %>% filter(qp_value < 0.01)
 
 edges <- (edges %>% mutate(PrQ = qhits/qtrials) 
                %>% mutate(PrA = ahits/atrials) 
                %>% mutate(BinPrA = 1-dbinom(0, 5, PrQ)))
 
-associatives <- edges %>% select(from, to, PrQ, PrA, EPrA) %>% filter(PrA < BinPrA)
-exclusives <- edges %>% select(from, to, PrQ, PrA, EPrA) %>% filter(PrA >= BinPrA)
+associatives <- edges %>% select(from, to, PrQ, PrA, BinPrA) %>% filter(PrA < BinPrA)
+associatives <- associatives %>% mutate(association_factor = BinPrA/PrA)
+exclusives <- edges %>% select(from, to, PrQ, PrA, BinPrA) %>% filter(PrA >= BinPrA)
+exclusives <- exclusives %>% mutate(exclusion_factor = PrA/BinPrA)
 
