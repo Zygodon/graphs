@@ -51,10 +51,10 @@ mu <- mean(edges$lor)
 stdev <- sd(edges$lor)
 # Plot parameters, show in block matrix plot text
 p_lim <- 0.05
-deg <-  1 # No filter by degree
-lor_low <- mu - (20 * stdev)
+# deg <-  1 # No filter by degree
+lor_low <- mu - (2 * stdev)
 lor_high <- mu + (2 * stdev)
-text_size = 6
+text_size = 5
 
 # G0: the basic graph
 edges1 <- (edges %>% mutate(sp_from = A, sp_to = B)
@@ -84,11 +84,11 @@ M <- as_adj(G0, type = "both", sparse = F)
 C <- as_adj(G0, type = "both", attr = "lor", sparse = F)
 D <- as_adj(G0, type = "both", attr = "a", sparse = F)
 
-# my_model <- BM_bernoulli("SBM",M )
+# my_model <- BM_bernoulli("SBM_sym",M )
 # my_model <- BM_bernoulli_covariates_fast("SBM",M,C)
 # my_model <- my_model <- BM_gaussian("SBM",C )
-my_model <- BM_poisson("SBM_sym",D)
-# my_model <- BM_poisson_covariates("SBM_sym", D, C)
+# my_model <- BM_poisson("SBM_sym",D)
+my_model <- BM_poisson_covariates("SBM_sym", D, C)
 # my_model <- BM_poisson_covariates("SBM", D, C)
 
 my_model$estimate()
@@ -136,12 +136,13 @@ eg0 <- G0 %>% activate(edges) %>% as_tibble(.)
 pal <- brewer.pal(model, "Dark2") # model: the selected SBM
 no0 <- no0 %>% mutate(axis_colour = pal[sbm_comm])
 # X, Y coordinates for text label reporting ICL
-text_x <- length(row.names(no0)) - 10
-text_y <-  -2
+text_x <- length(row.names(no0)) - 20
+text_y <-  -3
 # Text to show parameters on plot
 txt <- paste(paste("ICL =", as.integer(max(my_model$ICL)), sep = " "), 
              paste("p_val <", p_lim, sep = " "),
-             paste("degree >", deg, sep = " "), sep = "\n")
+             paste("LOR low =", format(lor_low, digits = 2),
+                   "LOR high =", format(lor_high, digits = 2), sep = " "), sep = "\n")
 # Horizontal and vertical lines between communities
 hvlines <- (no0 %>% group_by(sbm_comm)
             %>% summarise(n = n())
@@ -153,15 +154,13 @@ pal <- brewer.pal(7, "Dark2")
 pal1 <- pal[as.numeric(levels(as.factor(eg0$sbm_comm)))]
 
 ggraph(G0, 'matrix', sort.by = NULL) + 
-  geom_polygon(data = rectangles, aes(x = x, y = y, fill = as.factor(comm), group = comm), alpha = 0.4) +
+  geom_polygon(data = rectangles, aes(x = x, y = y, fill = as.factor(comm), group = comm), alpha = 1) +
   scale_fill_brewer(palette = "Dark2") +
   guides(fill = guide_legend(title = "community", override.aes = list(alpha = 1))) +
-  # geom_edge_point(aes(colour = as.factor(sbm_comm), size = a, alpha = lor), mirror = TRUE) +
-  geom_edge_point(aes(colour = lor, size = a), mirror = TRUE) +
-  # scale_edge_colour_manual(values = pal1, na.value = "grey50", guide = F) +
-  # guides(colour = FALSE) + #No guide for edge point colour
+  # geom_edge_point(aes(colour = lor, size = a), mirror = TRUE) +
+  #scale_edge_colour_gradient2(low = "black",
+  #  mid = "#f7f7f7", high = "#af8dc3", midpoint = 2) +
   geom_edge_point(edge_shape = 3, edge_size = 0.1, edge_alpha = 0.5, mirror = TRUE) +
-  # guides(edge_alpha = guide_legend(title = "log(odds ratio)", override.aes = list(edge_size = 4))) +
   guides(edge_size = guide_legend(title = "instances")) +
   geom_vline(xintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
   geom_hline(yintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
@@ -184,5 +183,4 @@ ggraph(G0, 'matrix', sort.by = NULL) +
            size = 2, 
            colour = "black")
 
-
-#ggsave("SBM_Poisson_all_LOR.jpg", width = 20, height = 20, units = "cm")
+# ggsave("SBM_Poisson_all_LOR.jpg", width = 20, height = 20, units = "cm")
