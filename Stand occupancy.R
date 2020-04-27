@@ -1,6 +1,7 @@
 library("RMySQL")
 library(tidyverse)
 library(igraph)
+library(vcd)
 
 # Functions
 dbDisconnectAll <- function(){
@@ -96,6 +97,7 @@ edges$d <-  0
 edges$p_val <-  0
 edges$or <- 0
 edges$lor <- 0
+edges$ase <- 0
 pb <- txtProgressBar(min=0, max=length(row.names(edges)))
 # for(i in c(0, x, 1)) {Sys.sleep(0.5); setTxtProgressBar(pb, i)}
 # Sys.sleep(1)
@@ -119,7 +121,9 @@ for (i in seq_along(row.names(edges)))
       edges$d[i] <- t[1,1]
       edges$p_val[i] <- ft$p.value
       edges$or[i] <- ft$estimate
-      edges$lor[i] <- log(ft$estimate)
+      l <- as.data.frame(loddsratio(t), correct = T)
+      edges$lor[i] <- l$LOR[1]
+      edges$ase[i] <- l$ASE[1]
     }
     setTxtProgressBar(pb, i)
 } # end for
