@@ -39,7 +39,7 @@ posxy <-  function(hvlines, comms_order)
 # MAIN
 
 # Edges stored in file. See Stand occupancy.R for code
-# Key: A, species-from; B, species-to; a,b,c,d, entries in the contingency tabel
+# Key: A, species-from; B, species-to; a,b,c,d, entries in the contingency table
 # p_val, significance level, Fisher's Exact Text for association;
 # or, odds ratio
 # lor, logarithm of the odds ratio
@@ -52,7 +52,7 @@ stdev <- sd(edges$lor)
 # Plot parameters, show in block matrix plot text
 p_lim <- 0.05
 # deg <-  1 # No filter by degree
-lor_low <- mu - (2 * stdev)
+lor_low <- -20 # mu - (2 * stdev)
 lor_high <- mu + (2 * stdev)
 text_size = 5
 
@@ -63,14 +63,6 @@ edges1 <- (edges %>% mutate(sp_from = A, sp_to = B)
 
 vertices1 <- edges1 %>% pivot_longer(cols = c(A, B), values_to = "species") %>% distinct(species)
 G0 <- tbl_graph(nodes = vertices1, edges = edges1, directed = F)
-
-# G0 <- (tbl_graph(nodes = vertices, edges = edges1, directed = F)
-#        %>% activate(edges)
-#        %>% filter(p_val < p_lim)
-#        %>% filter(lor < lor_low | lor > lor_high)
-#        %>% activate(nodes)
-#        %>% mutate(degree = degree(.))
-#        %>% filter(degree > deg))
 
 # Hairball preview
 G0 %>% activate(edges) %>% ggraph(layout = layout.fruchterman.reingold(G0)) + 
@@ -87,8 +79,8 @@ D <- as_adj(G0, type = "both", attr = "a", sparse = F)
 # my_model <- BM_bernoulli("SBM_sym",M )
 # my_model <- BM_bernoulli_covariates_fast("SBM",M,C)
 # my_model <- my_model <- BM_gaussian("SBM",C )
-# my_model <- BM_poisson("SBM_sym",D)
-my_model <- BM_poisson_covariates("SBM_sym", D, C)
+my_model <- BM_poisson("SBM_sym",D)
+# my_model <- BM_poisson_covariates("SBM_sym", D, C)
 # my_model <- BM_poisson_covariates("SBM", D, C)
 
 my_model$estimate()
@@ -150,17 +142,17 @@ hvlines <- (no0 %>% group_by(sbm_comm)
             %>% mutate(cs = cumsum(n) + 0.5))
 # Rectangles
 rectangles <- posxy(hvlines$cs, hvlines$sbm_comm)
-pal <- brewer.pal(7, "Dark2")
-pal1 <- pal[as.numeric(levels(as.factor(eg0$sbm_comm)))]
+# pal <- brewer.pal(7, "Dark2")
+# pal1 <- pal[as.numeric(levels(as.factor(eg0$sbm_comm)))]
 
 ggraph(G0, 'matrix', sort.by = NULL) + 
   geom_polygon(data = rectangles, aes(x = x, y = y, fill = as.factor(comm), group = comm), alpha = 1) +
   scale_fill_brewer(palette = "Dark2") +
   guides(fill = guide_legend(title = "community", override.aes = list(alpha = 1))) +
-  # geom_edge_point(aes(colour = lor, size = a), mirror = TRUE) +
-  #scale_edge_colour_gradient2(low = "black",
-  #  mid = "#f7f7f7", high = "#af8dc3", midpoint = 2) +
-  geom_edge_point(edge_shape = 3, edge_size = 0.1, edge_alpha = 0.5, mirror = TRUE) +
+  geom_edge_point(aes(colour = lor, size = a), edge_alpha = 0.6, mirror = TRUE) +
+  scale_edge_colour_gradient2(low = "black",
+  mid = "#f7f7f7", high = "#af8dc3", midpoint = 2) +
+  geom_edge_point(edge_shape = 3, edge_size = 0.1, edge_alpha = 1, mirror = TRUE) +
   guides(edge_size = guide_legend(title = "instances")) +
   geom_vline(xintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
   geom_hline(yintercept = c(0, hvlines$cs), alpha = 0.5, colour = "grey") +
@@ -174,7 +166,7 @@ ggraph(G0, 'matrix', sort.by = NULL) +
   theme(axis.text.y = element_text(size = text_size, colour = no0$axis_colour, face = 'bold')) +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black")) +
-  theme(legend.box = "vertical") +
+  theme(legend.box = "horizontal") +
   ggtitle('SBM Poisson') +
   annotate("text", 
            label = txt, 
@@ -183,4 +175,32 @@ ggraph(G0, 'matrix', sort.by = NULL) +
            size = 2, 
            colour = "black")
 
-# ggsave("SBM_Poisson_all_LOR.jpg", width = 20, height = 20, units = "cm")
+# ggsave("SBM_Poisson__LOR.jpg", width = 20, height = 20, units = "cm")
+
+# Blockmodel boxplot
+# Identify insignificant communities
+
+PP <- my_model$model_parameters[model][[1]]$lambda
+p <-  diag(PP)
+# Set diag(PP) NA so block_p not included in boxplot
+diag(PP) <- NA
+
+guilds <- stack(as.data.frame(PP))
+colnames(guilds) <- c("out_p", "guild")
+guild_names <- guilds %>% select(guild) %>% group_by(guild) %>% distinct() %>% ungroup()
+block_p <- tibble(guild = guild_names$guild, 
+                  p = p,
+                  guild_int = as.integer(as.factor(guild)))
+# Not plotted - this is just to get bp_stats
+g <- ggplot() + 
+  geom_boxplot(data = guilds, aes(x = guild, y = out_p))
+bp_stats <- ggplot_build(g)$data[[1]]
+block_p <- (block_p %>% mutate(lower_hinge = bp_stats$lower)
+            %>% mutate(upper_hinge = bp_stats$upper)
+            %>% mutate(strong = (p > upper_hinge | p < lower_hinge)))
+# Plot note log y axis
+g1 <- ggplot() + 
+  geom_boxplot(data = guilds, aes(x = guild, y = out_p)) +
+  geom_point(data = block_p, aes(x = guild, y = p), colour = "red") +
+  scale_y_log10()
+plot(g1)
