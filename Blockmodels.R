@@ -52,8 +52,8 @@ stdev <- sd(edges$lor)
 # Plot parameters, show in block matrix plot text
 p_lim <- 0.05
 # deg <-  1 # No filter by degree
-lor_low <- -20 # mu - (2 * stdev)
-lor_high <- mu + (2 * stdev)
+lor_low <- 0 # mu - (2 * stdev)
+lor_high <- 0 # mu + (2 * stdev)
 text_size = 5
 
 # G0: the basic graph
@@ -65,11 +65,11 @@ vertices1 <- edges1 %>% pivot_longer(cols = c(A, B), values_to = "species") %>% 
 G0 <- tbl_graph(nodes = vertices1, edges = edges1, directed = F)
 
 # Hairball preview
-G0 %>% activate(edges) %>% ggraph(layout = layout.fruchterman.reingold(G0)) + 
-  geom_edge_link(colour = "black", alpha = 0.2) +
-  geom_node_point(shape = 21, alpha = 1) +
-  ggtitle('G0 preview') +
-  theme_minimal()
+# G0 %>% activate(edges) %>% ggraph(layout = layout.fruchterman.reingold(G0)) + 
+#   geom_edge_link(colour = "black", alpha = 0.2) +
+#   geom_node_point(shape = 21, alpha = 1) +
+#   ggtitle('G0 preview') +
+#   theme_minimal()
 
 # BLOCK MODEL
 M <- as_adj(G0, type = "both", sparse = F)
@@ -77,9 +77,9 @@ C <- as_adj(G0, type = "both", attr = "lor", sparse = F)
 D <- as_adj(G0, type = "both", attr = "a", sparse = F)
 
 # my_model <- BM_bernoulli("SBM_sym",M )
-# my_model <- BM_bernoulli_covariates_fast("SBM",M,C)
+my_model <- BM_bernoulli_covariates_fast("SBM_sym",M,C)
 # my_model <- my_model <- BM_gaussian("SBM",C )
-my_model <- BM_poisson("SBM_sym",D)
+# my_model <- BM_poisson("SBM_sym",D)
 # my_model <- BM_poisson_covariates("SBM_sym", D, C)
 # my_model <- BM_poisson_covariates("SBM", D, C)
 
@@ -180,7 +180,7 @@ ggraph(G0, 'matrix', sort.by = NULL) +
 # Blockmodel boxplot
 # Identify insignificant communities
 
-PP <- my_model$model_parameters[model][[1]]$lambda
+PP <- my_model$model_parameters[model][[1]]$m
 p <-  diag(PP)
 # Set diag(PP) NA so block_p not included in boxplot
 diag(PP) <- NA
@@ -193,14 +193,17 @@ block_p <- tibble(guild = guild_names$guild,
                   guild_int = as.integer(as.factor(guild)))
 # Not plotted - this is just to get bp_stats
 g <- ggplot() + 
-  geom_boxplot(data = guilds, aes(x = guild, y = out_p))
+  geom_boxplot(data = guilds, aes(x = guild, y = out_p)) +
+  geom_point(data = block_p, aes(x = guild, y = p), colour = "red") 
+plot(g) 
+
 bp_stats <- ggplot_build(g)$data[[1]]
 block_p <- (block_p %>% mutate(lower_hinge = bp_stats$lower)
             %>% mutate(upper_hinge = bp_stats$upper)
             %>% mutate(strong = (p > upper_hinge | p < lower_hinge)))
 # Plot note log y axis
-g1 <- ggplot() + 
-  geom_boxplot(data = guilds, aes(x = guild, y = out_p)) +
-  geom_point(data = block_p, aes(x = guild, y = p), colour = "red") +
-  scale_y_log10()
-plot(g1)
+# g1 <- ggplot() + 
+#   geom_boxplot(data = guilds, aes(x = guild, y = out_p)) +
+#   geom_point(data = block_p, aes(x = guild, y = p), colour = "red") +
+#   scale_y_log10()
+# plot(g1)
