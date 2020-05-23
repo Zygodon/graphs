@@ -35,11 +35,24 @@ site_occ <- read_csv("stand occupancy.csv")
 species_hits <- tibble(species = colnames(site_occ[2:207]), hits = colSums(site_occ[,2:207]))
 no0 <- no0 %>% left_join(species_hits, by = c("value" = "species"))
 
+h <- seq(0, 100, 1)
+d <- (145 * (1 - exp(-h/8.686))) - (0.959 * h)
+m <- tibble(h = h, d = d)
+
 p1 <- ggplot(no0, aes(hits, deg))+
   geom_point() +
-  geom_smooth(method = "loess")
+  geom_smooth(method = "loess") +
+  geom_abline(slope = 8.686, intercept = 16.3, colour = "red") +
+  geom_abline(slope = -0.959, intercept = 186.7, colour = "red") +
+  geom_smooth(data = m, aes(h, d), colour = "green")
 plot(p1)
  
-(edges %>% filter(sp_from == "Luzula_campestris" | sp_to == "Luzula_campestris")
-              %>% filter(lor < 1) %>% summarise(n = n()))
+# Parameters need optimising but approach looks OK
+# i. e. could model the fit by an exponential representing the
+# inevitable increase in degree with commonness plus a negative linear 
+# relationship between degree and the area occupied by very common plants.
+
+
+# (edges %>% filter(sp_from == "Luzula_campestris" | sp_to == "Luzula_campestris")
+#               %>% filter(lor < 1) %>% summarise(n = n()))
                         
